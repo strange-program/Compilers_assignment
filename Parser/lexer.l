@@ -1,6 +1,6 @@
 %{
-#include "lexer.h"
-#include "parser.h"
+#include "lexer.hpp"
+#include "parser.hpp"
 
 #define T_eof 0
 

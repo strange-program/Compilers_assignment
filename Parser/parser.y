@@ -1,7 +1,7 @@
 %{
-#include <stdio.h>
-#include <stdlib.h>
-#include "lexer.h"
+#include <cstdio>
+#include <cstdlib>
+#include "lexer.hpp"
 extern int lineno;
 %}
 
@@ -48,7 +48,6 @@ extern int lineno;
 %left '*' '/' '%' '&'
 %nonassoc UPLUS UMINUS '!'
 
-%expect 1
 
 %%
 
@@ -59,10 +58,9 @@ func_def : "def" header local_def_list block ;
 header : T_identifier
 | T_identifier "is" data_type
 | T_identifier ':' fpar_def fpar_def_list
-| T_identifier "is" data_type ':' fpar_def fpar_def_list
-; 
+| T_identifier "is" data_type ':' fpar_def fpar_def_list ; 
 
-fpar_def_list : /* epsilon */ | ',' fpar_def  ;
+fpar_def_list : /* epsilon */ | ',' fpar_def  fpar_def_list ;
 
 id_list : T_identifier | T_identifier id_list ;
 
@@ -98,7 +96,7 @@ stmt : "skip"
 | "continue"
 | "continue" ':' T_identifier ;
 
-elif_list : /* epsilon */ | "elif" cond ':' block ;
+elif_list : /* epsilon */ | "elif" cond ':' block elif_list;
 
 stmt_list : stmt stmt_list | stmt ;
 

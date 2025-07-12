@@ -1,21 +1,22 @@
-CC = gcc
+CC = g++
 CFLAGS = -Wall
+BFLAGS = -Wcounterexamples
 
-lexer.c : lexer.l parser.h
-	flex -s -o lexer.c lexer.l
+lexer.cpp : lexer.l parser.hpp
+	flex -s -o lexer.cpp lexer.l
 
-lexer.o : lexer.c lexer.h parser.h
+lexer.o : lexer.cpp lexer.hpp parser.hpp
 
-parser.h parser.c : parser.y
-	bison -dv -o parser.c parser.y
+parser.hpp parser.cpp : parser.y
+	bison -dv $(BFLAGS) -o parser.cpp parser.y
 
-parser.o : parser.c lexer.h
+parser.o : parser.cpp lexer.hpp
 
 danac : lexer.o parser.o
 	$(CC) $(CFLAGS) -o danac lexer.o parser.o -lfl
 
 clean: 
-	$(RM) lexer.c parser.c parser.h parser.output *.o
+	$(RM) lexer.cpp parser.cpp parser.hpp parser.output *.o
 
 distclean: clean
 	$(RM) danac
