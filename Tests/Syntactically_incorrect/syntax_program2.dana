@@ -1,0 +1,7 @@
+# Syntax error: else is not connected with an if
+
+def fact is int: n as int
+	if n <= 1: return: 0
+		if n = 2: return: 2
+	return: 1
+	else: return: n * fact(n-1)
