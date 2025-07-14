@@ -1,3 +1,0 @@
-def foo
-    x := 5
-  y := 6  # Indented less than previous, should trigger auto_end or fail
