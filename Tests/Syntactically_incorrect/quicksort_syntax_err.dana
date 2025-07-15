@@ -1,0 +1,74 @@
+# Syntax error, line 6: can't have variable and function
+# declaration inside block body
+
+def main
+begin
+    def partition is int: low high as int, arr as int []
+        var pivot i temp j is int
+    begin
+        pivot := arr[high]
+        i := low - 1
+        j := low
+
+        loop:
+        begin
+            if j > high - 1: begin break end
+            if arr[j] < pivot:
+            begin
+                temp := arr[i + 1]
+                arr[i + 1] := arr[j]
+                arr[j] := temp
+                i := i + 1
+            end
+            j := j + 1
+        end
+        temp := arr[i + 1]
+        arr[i + 1] := arr[high]
+        arr[high] := temp
+        return: i + 1 
+    end
+
+    def quicksort: low high as int, arr as int []
+            var pivot is int
+    begin 
+        if low < high:
+        begin
+            pivot := partition(low, high, arr)
+            quicksort: low, pivot - 1, arr
+            quicksort: pivot + 1, high, arr
+        end
+    end
+
+    var N is int
+    var nums is int [40]
+    var k is int
+    
+    N := readInteger()
+    k := 0
+
+    loop:
+    begin
+        if k >= N: begin break end
+        nums[k] := readInteger()
+        k := k + 1
+    end
+
+    quicksort: 0, N - 1, nums
+
+    k := 0
+    loop:
+    begin
+        if k < N:
+        begin
+            if k > 0: begin writeString: ", " end
+            writeInteger: nums[k]
+            k := k + 1
+        end 
+        else: 
+        begin 
+            break
+        end
+    end
+    writeString: "\n"
+end
+
