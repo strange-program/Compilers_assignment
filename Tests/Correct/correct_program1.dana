@@ -1,5 +1,0 @@
-def hello
-begin
-	writeString: "Hello there\n" 
-	x := 3
-end
