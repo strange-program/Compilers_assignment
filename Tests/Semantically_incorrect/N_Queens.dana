@@ -1,0 +1,101 @@
+def main
+
+    def printBoard: board as byte[][20], n as int
+        var i j is int
+        i := 0
+        loop:
+            if i >= n : 
+                break
+            j := 0
+            loop:
+                if j >= n :  
+                    break
+                if board[i][j] = true :  
+                    writeString: "Q "
+                else :
+                    writeString: ". "
+                j := j + 1
+            writeString: "\n"
+            i := i + 1
+        writeString: "\n"
+
+    def isSafe is byte: board as byte[][20], row col n as int
+        var i j is int
+
+        # check columns
+        i := 0
+        loop:
+            if i >= row :  
+                break
+            if board[i][col] = true :  
+                return : false  
+            i := i + 1
+
+        # check left diagonal
+        i := row - 1
+        j := col - 1
+        loop:
+            if i < 0 or j < 0 :  
+                break
+            if board[i][j] = true :  
+                return : false
+            i := i - 1
+            j := j - 1
+
+        # check right diagonal
+        i := row - 1
+        j := col + 1
+        loop:
+            if i < 0 or j >= n :  
+                break
+            if board[i][j] = true :  
+                return : false
+            i := i - 1
+            j := j + 1
+
+        return : true
+
+    def solveNQueensUtil is byte: board as byte[][20], row n as int
+        var col is int
+        if row = n :  
+            printBoard: board, n
+            return : true   
+
+        col := 0
+        loop:
+            if col >= n :  
+                break
+            if isSafe(board, row, col, n) :  
+                board[row][col] := true  
+                if solveNQueensUtil(board, row + 1, n) :  
+                    return : true  
+                board[row][col] := false  
+            col := col + 1  
+
+        return : false   
+
+    def solveNQueens: n as int
+        var board is byte[100][100]
+        var i j is int
+
+        i := 0
+        loop:
+            if i >= n :  
+                break
+            j := 0
+            loop:
+                if j >= n :  
+                    break
+                board[i][j] := false  
+                j := j + 1  
+            i := i + 1  
+
+        if solveNQueensUtil( board, 0, n) :  
+            writeString: "Solution found.\n"
+        else :
+            writeString: "No solution exists.\n"
+
+    var size is int
+    writeString: "Enter board size: "
+    size := readInteger()  
+    solveNQueens: size  
