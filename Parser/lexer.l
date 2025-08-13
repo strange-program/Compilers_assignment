@@ -1,60 +1,42 @@
 %{
-#include "lexer.hpp"
-
-// #include "parser.hpp"
-
+#include <string>
 #include <stack>
+#include <cstdlib>  // for strtol
+#include <cstring>  // for strlen
+
+#include "lexer.hpp"
+#include "ast.hpp"
+#include "parser.hpp"
 
 #define T_eof 0
 
-#define T_and       500
-#define T_as        501
-#define T_begin     502
-#define T_break     503
-#define T_byte      504
-#define T_continue  505
-#define T_decl      506
-#define T_def       507
-#define T_elif      508
-#define T_else      509
-#define T_end       510
-#define T_exit      511
-#define T_false     512
-#define T_if        513
-#define T_is        514
-#define T_int       515
-#define T_loop      516
-#define T_not       517
-#define T_or        518
-#define T_ref       519
-#define T_return    520
-#define T_skip      521
-#define T_true      522
-#define T_var       523
-
-#define T_not_equal 524
-#define T_less_or_equal 525
-#define T_more_or_equal 526
-#define T_assign 527
-
-#define T_identifier 528
-#define T_int_const  529
-#define T_string     530
-#define T_char_const 531
-
-#define T_auto_end 532
-
 using namespace std;
+
 int lineno = 1;
+int lexical_errors = 0;
 
 int indent = 0;
 int leader_indent = 0; 
 int auto_end_pending = 0;
+int tablen = 8;
 
 stack<int> indentstack;
 stack<int> blocktype_stack;
 
-int tablen = 4;
+char get_char (char* str) {
+	if (str[1]=='\\') {
+		if (str[2]=='n') return '\n';
+		else if (str[2]=='t') return '\t';
+		else if (str[2]=='r') return '\r';
+		else if (str[2]=='0') return '\0';
+		else if (str[2]=='\'') return '\'';
+		else if (str[2]=='\"') return '\"';
+		else {
+			return static_cast<char>(strtol(str + 3, nullptr, 16));
+		}
+	}
+	else return str[1];
+}
 
 %}
 
@@ -65,11 +47,12 @@ S [\x20a-zA-Z0-9\t!@#$%^&*()-=+<>?;:,./|\\\']
 
 %%
 
-"and"       { return T_and; }
-"as"        { return T_as; }
+"and"       { leader_indent+= yyleng; return T_and; }
+"as"        { leader_indent+= yyleng; return T_as; }
 
 "begin"     { 
-	
+
+	leader_indent+= yyleng; 
 	if(!indentstack.empty()) indentstack.pop();
 	if(!blocktype_stack.empty()) blocktype_stack.pop();
 	indentstack.push(0);
@@ -77,65 +60,59 @@ S [\x20a-zA-Z0-9\t!@#$%^&*()-=+<>?;:,./|\\\']
 	return T_begin; 
 }
 
-"break"     { return T_break; }
-"byte"      { return T_byte; }
-"continue"  { return T_continue; }
-"decl"      { return T_decl; }
-"def"       { indentstack.push(leader_indent); blocktype_stack.push(1); return T_def; }
-"elif"      { indentstack.push(leader_indent); blocktype_stack.push(1); return T_elif; }
-"else"      { indentstack.push(leader_indent); blocktype_stack.push(1); return T_else; }
+"break"     { leader_indent+= yyleng; return T_break; }
+"byte"      { leader_indent+= yyleng; return T_byte; }
+"continue"  { leader_indent+= yyleng; return T_continue; }
+"decl"      { leader_indent+= yyleng; return T_decl; }
+"def"       { indentstack.push(leader_indent); blocktype_stack.push(1); leader_indent+= yyleng; return T_def; }
+"elif"      { indentstack.push(leader_indent); blocktype_stack.push(1); leader_indent+= yyleng; return T_elif; }
+"else"      { indentstack.push(leader_indent); blocktype_stack.push(1); leader_indent+= yyleng; return T_else; }
 
 "end"       { 
-
+	leader_indent+= yyleng; 
 	if (!indentstack.empty()) indentstack.pop(); 
 	if (!blocktype_stack.empty()) blocktype_stack.pop(); 
 	return T_end; 
 }
 
-"exit"      { return T_exit; }
-"false"     { return T_false; }
-"if"        { indentstack.push(leader_indent); blocktype_stack.push(1); return T_if; }
-"is"        { return T_is; }
-"int"       { return T_int; }
-"loop"      { indentstack.push(leader_indent); blocktype_stack.push(1); return T_loop; }
-"not"       { return T_not; }
-"or"        { return T_or; }
-"ref"       { return T_ref; }
-"return"    { return T_return; }
-"skip"      { return T_skip; }
-"true"      { return T_true; }
-"var"       { return T_var; }
-"<>"        { return T_not_equal; }
-"<="        { return T_less_or_equal; }
-">="	    { return T_more_or_equal; }
-":="        { return T_assign; }
+"exit"      { leader_indent+= yyleng; return T_exit; }
+"false"     { leader_indent+= yyleng; return T_false; }
+"if"        { indentstack.push(leader_indent); blocktype_stack.push(1); leader_indent+= yyleng; return T_if; }
+"is"        { leader_indent+= yyleng; return T_is; }
+"int"       { leader_indent+= yyleng; return T_int; }
+"loop"      { indentstack.push(leader_indent); blocktype_stack.push(1); leader_indent+= yyleng; return T_loop; }
+"not"       { leader_indent+= yyleng; return T_not; }
+"or"        { leader_indent+= yyleng; return T_or; }
+"ref"       { leader_indent+= yyleng; return T_ref; }
+"return"    { leader_indent+= yyleng; return T_return; }
+"skip"      { leader_indent+= yyleng; return T_skip; }
+"true"      { leader_indent+= yyleng; return T_true; }
+"var"       { leader_indent+= yyleng; return T_var; }
+"<>"        { leader_indent+= yyleng; return T_not_equal; }
+"<="        { leader_indent+= yyleng; return T_less_or_equal; }
+">="	    { leader_indent+= yyleng; return T_more_or_equal; }
+":="        { leader_indent+= yyleng; return T_assign; }
 
 <<EOF>>     { 
 
+	if (lexical_errors>0) exit(1);
+	
 	auto_end_pending = indentstack.size();
 	indentstack = stack<int>();     // Clear the stacks
 	blocktype_stack = stack<int>();
-	if (auto_end_pending > 0) {
-		return T_auto_end;
-	} else {
-    	return T_eof;
-    }
+
+	if (auto_end_pending > 0) return T_auto_end;
+	else return T_eof;
+    
 }
 
-{L}({L}|{D}|_)*     { return T_identifier; }
-{D}+			    { return T_int_const; }
+{L}({L}|{D}|_)*     { leader_indent+= yyleng; yylval.identifier = strdup(yytext); return T_identifier; }
+{D}+			    { leader_indent+= yyleng; yylval.int_const = atoi(yytext); return T_int_const; }
 
-\"(\\[ntr0\\'"]|\\x[0-9a-fA-F]{2}|[^\\'"\n])*\"  { return T_string; }
-\'(\\[ntr0\\'"]|\\x[0-9a-fA-F]{2}|[^\\'"\n])\'   { return T_char_const; }
+\"(\\[ntr0\\'"]|\\x[0-9a-fA-F]{2}|[^\\'"\n])*\"  { leader_indent+= yyleng; yylval.string_const = strdup(yytext); return T_string; }
+\'(\\[ntr0\\'"]|\\x[0-9a-fA-F]{2}|[^\\'"\n])\'   { leader_indent+= yyleng; yylval.char_const = get_char(yytext); return T_char_const; }
 
-\n({W}|#.*)*\n { 
-	
-	lineno++;
-	unput('\n');
-}
-
-\n({W}|#.*)*begin   {
-  
+\n({W})*/(begin|end|\#|[(][*]|\n)   {
 	lineno++; 
   	indent = 0;
   	
@@ -144,16 +121,12 @@ S [\x20a-zA-Z0-9\t!@#$%^&*()-=+<>?;:,./|\\\']
 		else if (yytext[i]=='\r') indent = 0;
 		else indent++;
   	}
-	
-	indent -= 5; // Delete length of begin keyword 
 
   	leader_indent = indent;
-
-	unput('n'); unput('i'); unput('g'); unput('e'); unput('b'); 
-
 }
+ 
 
-\n({W}|#.*)*   {
+\n({W})* {
   
 	lineno++; 
   	indent = 0;
@@ -165,7 +138,7 @@ S [\x20a-zA-Z0-9\t!@#$%^&*()-=+<>?;:,./|\\\']
   	}
 
   	leader_indent = indent;
-  
+
   	if (!blocktype_stack.empty() && !indentstack.empty()) {
   		if (blocktype_stack.top() == 1 && indentstack.top() >= indent) {
 			for (int i=yyleng-1; i>=0; i--) {
@@ -180,15 +153,26 @@ S [\x20a-zA-Z0-9\t!@#$%^&*()-=+<>?;:,./|\\\']
 			
   		}
 	}
-}  
+}
+  
 
-[\+\-\*\/\%\!\&\|\=\<\>\(\)\[\]\,\:]   { return yytext[0]; }
+[\+\-\*\/\%\!\&\|\=\<\>\(\)\[\]\,\:]   { leader_indent+= yyleng; return yytext[0]; }
 
-{W}+            { /*nothing*/ }
-#.*	        { /*one-line-comment*/ }
+{W}+        { 
+	
+	/*nothing*/ 
+	for (int i=0; i<yyleng; i++) {
+		if (yytext[i]=='\t') leader_indent += (tablen - (leader_indent%tablen));	
+		else if (yytext[i]=='\r') leader_indent = 0;
+		else leader_indent++;
+	}
+}
 
-[(][*][^*]*([*]+[^)][^*]*)*[*]+[)] { /*multi-line-comment*/
+#.*	        { leader_indent+= yyleng; /*one-line-comment*/ }
 
+[(][*][^*]*([*]+[^)][^*]*)*[*]+[)] { 
+
+	/*multi-line-comment*/
 	for (int i=0; i<yyleng; i++) {
 		if (yytext[i]=='\n') lineno++;
 	}
@@ -202,18 +186,9 @@ S [\x20a-zA-Z0-9\t!@#$%^&*()-=+<>?;:,./|\\\']
         	return T_auto_end;
     	}
   	
-	fprintf(stderr, "Lexical Error at line %d: invalid character '%c' (ASCII %d)\n", lineno,yytext[0], yytext[0]); }
+	fprintf(stderr, "Lexical Error at line %d: invalid character '%c' (ASCII %d)\n", lineno,yytext[0], yytext[0]);
+	lexical_errors++;
+ }
 
 %%
 
-int yywrap() {
-    return 1;
-}
-
-int main () {
-    int token;
-    while ((token = yylex()) != T_eof) {
-        printf("Line %d: token = (%3d), lexeme = %s\n", lineno, token, yytext);
-    }
-    return 0;
-}
