@@ -116,7 +116,7 @@ protected:
 			if (Arg.getName() == name)
 				return &Arg;
 		}
-		return nullptr; 
+		return nullptr; // not found
 	}
 
 	// Return a vector of the function parameters
@@ -335,19 +335,12 @@ public:
 
 		var_type = var;
 
-		// The following part is used for recording external variables
-		// used by the function. It is not part of semantic analysis
-		int scope_depth = vst.findscope(id->get_name());
-		string curfunc = func_name_stack.back();
-
-		if (extern_vars[Index].find(curfunc) == extern_vars[Index].end()) extern_vars[Index][curfunc] = {};
-		if (scope_depth != -1) extern_vars[Index][curfunc].push_back(make_pair(id->get_name(),scope_depth));
 	}
 
 	Value* igen() const override {
 		// Case that lvalue is a string const
 		if (string_literal!=nullptr) {
-			return string_literal->igen();
+			return string_literal->igen(); //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		}
 
 		vector<Value*> indices;
@@ -364,48 +357,7 @@ public:
 		if (i==func_decl_stack.back().size()) {
 			Function *CurFunc = Builder.GetInsertBlock()->getParent();
 			Argument* Arg = findParam(CurFunc,id->get_name());
-			if (Arg==nullptr) {
-				// variable not in current scope or parameters
-				//yyerror("Not yet fixed",this->get_line_num());
-				
-				string curfunc_name = string(CurFunc->getName());
-				vector<pair<string,int>> extern_variables;
-				for (int i=Index; i>=0; i--) {
-					if (extern_vars[i].find(curfunc_name) != extern_vars[i].end()) {
-						extern_variables = extern_vars[i][curfunc_name];
-						break;
-					}
-				}
-				
-				Type* vartype;
-				int var_pos = 0;
-				
-				Arg = findParam(CurFunc,"1env");
-				for (auto &elem : extern_variables) {
-					if (elem.first == id->get_name()) break;
-					var_pos++;
-				}
-
-				for (auto &var : func_decl_stack[extern_variables[var_pos].second]) {
-					if (var.first == id->get_name()) {
-						vartype = PointerType::get(var.second, 0);
-						break;
-					}
-				}
-
-				auto Env_Type = function_env_types[curfunc_name];
-				Value* PtrPtr = Builder.CreateStructGEP(Env_Type, Arg, var_pos, "ptr.ptr");
-				Value* Ptr = Builder.CreateLoad(vartype, PtrPtr, "ptr");
-				
-				indices.push_back(c32(0));
-				for (auto &expr : expr_list) {
-					expr_res = expr->igen();
-					if (expr->is_lvalue()) expr_res = Builder.CreateLoad(expr_res->getType()->getPointerElementType(),expr_res);
-					indices.push_back(expr_res);
-				}
-
-				return Builder.CreateGEP(vartype->getPointerElementType(),Ptr,indices,id->get_name());
-			}
+			if (Arg==nullptr) yyerror("Not yet fixed",this->get_line_num());
 
 			Ty = Arg->getType()->getPointerElementType();
 		
