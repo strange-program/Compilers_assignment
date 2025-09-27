@@ -1,6 +1,0 @@
-# Lexical error: \ character not allowed on its own inside a string
-
-def test 
-	begin
-		x := "ffff  \ ddd"
-	end

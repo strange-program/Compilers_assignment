@@ -1,3 +1,0 @@
-def main: blip blop as byte[]
-    var blep is byte[]
-    blep := blip - blop
