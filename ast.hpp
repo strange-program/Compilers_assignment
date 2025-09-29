@@ -510,13 +510,16 @@ public:
 
     ~Param_type() override {
         if (int_list) {
-            for (auto intval : *int_list) {
-                delete intval;   // delete each Int_const*
-            }
+            for (auto intval : *int_list) delete intval;   // delete each Int_const*
             delete int_list;     // delete the vector itself
             int_list = nullptr;
         }
+        if (data_type) {
+            delete data_type;   // delete the Data_Type* to avoid leak
+            data_type = nullptr;
+        }
     }
+
 
 	VarSTEntry get_param_type() {
 		vector<int> dims ;
@@ -603,14 +606,14 @@ public:
  
     ~Parameter() override {
         if (id_list) {
-            for (auto id : *id_list) {
-                delete id;       // delete each Identifier
-            }
-            delete id_list;      // delete the vector itself
+            for (auto id : *id_list) delete id;
+            delete id_list;
             id_list = nullptr;
         }
-        delete param_type;       // delete the Param_type object
-        param_type = nullptr;
+        if (param_type) {
+            delete param_type;  
+            param_type = nullptr;
+        }
     }
 
 	vector<pair<string,VarSTEntry>> get_param_vector() { return params; }
