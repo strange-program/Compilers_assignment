@@ -856,12 +856,15 @@ public:
         if (var_list) {
             for (auto &id : *var_list) delete id;
             delete var_list;
+            var_list = nullptr;
         }
         if (int_list) {
             for (auto &intval : *int_list) delete intval;
             delete int_list;
+            int_list = nullptr;
         }
-        // data_type is not owned here; do not delete
+        delete data_type;   // <-- FIX: free the allocated Data_Type
+        data_type = nullptr;
     }
 
 	void sem_analysis() override {
