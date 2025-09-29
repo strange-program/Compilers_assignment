@@ -297,6 +297,7 @@ int main(int argc, char *argv[]) {
             root->LLVM_IR_gen(optimize);
             delete root;
             root = nullptr;
+            AST::cleanup();
         }    
     }
 
