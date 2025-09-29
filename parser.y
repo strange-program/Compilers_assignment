@@ -11,6 +11,8 @@ using namespace std;
 extern int lineno;
 bool optimize;
 
+Func_Def* root = nullptr; // store top-level function definition
+
 // Semantic analysis data structures
 Var_Symbol_Table vst;
 Func_Symbol_Table fst;
@@ -131,10 +133,6 @@ map<string, StructType*> function_env_types;
 	char char_const;
 }
 
-//%destructor {
-//    delete $$;
-//} <expression_list>
-
 %type<data_type> data_type
 
 %type<statement> stmt
@@ -163,7 +161,7 @@ map<string, StructType*> function_env_types;
 
 %%
 
-program : func_def       { /*cout << *$1 << endl;*/ $1->sem_analysis(); $1->LLVM_IR_gen(optimize); } ;
+program : func_def       { root = $1; } ;
 
 func_def : "def" header local_def_list block { $$ = new Func_Def($2,$3,$4); $$->set_line(lineno); } ;
 
@@ -287,13 +285,20 @@ void yyerror(const char *msg, int err_line) {
 
 
 int main(int argc, char *argv[]) {
-	
-	optimize = false;
-	if (argc>=2) {
-		optimize = atoi(argv[1]);
-	}
+    optimize = false;
+    if (argc >= 2) {
+        optimize = atoi(argv[1]);
+    }
+    int res = yyparse();
 
-	int res = yyparse();
-	//if (res == 0) printf("Successful parsing\n");
-	return res;
+    if (res == 0) {
+        if (root) {
+            root->sem_analysis();
+            root->LLVM_IR_gen(optimize);
+            delete root;
+            root = nullptr;
+        }    
+    }
+
+    return res;
 }
