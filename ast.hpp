@@ -29,10 +29,11 @@ inline const char* param_name[] = {"value","reference"};
 extern vector<vector<pair<string,Type*>>> func_decl_stack;
 extern vector<vector<pair<AllocaInst*,Type*>>> func_var_stack;
 
-// Data structured used to hold metadata for the parameters
-// of functions. Value of 1 means that the function parameter 
-// is a dynamic array. Value of 2 mean it is a base type
-// (int or byte) passed by value
+// Data structured used to hold metadata for the parameters of functions
+// Value of 0 means that the function parameter is a normal array
+// Value of 1 means that the parameter is a dynamic array
+// Value of 2 means it is a parameter (int or byte) passed by value
+// Value of 3 means it is a parameter (int or byte) passed by reference
 extern map<Argument*,int> param_metadata;
 extern map<string,int> aux_param_metadata;
 
@@ -40,10 +41,29 @@ extern map<string,int> aux_param_metadata;
 extern vector<pair<string,pair<BasicBlock*,BasicBlock*>>> loop_block_stack;
 extern int loop_block_id;
 
+// Data structures used to reference external variables used by functions
+extern vector<map<string,vector<pair<string,int>>>> extern_vars;
+extern vector<string> func_name_stack;
+extern map<string, StructType*> function_env_types;
+extern int Index;
+
+// Add this helper function at the top of your file
+inline void debugType(const char* location, Type* t) {
+    llvm::errs() << "[" << location << "] Type: " << *t 
+                 << ", TypeID: " << t->getTypeID() 
+                 << ", IsPointer: " << t->isPointerTy() << "\n";
+}
+
+// And this version for Values
+inline void debugValue(const char* location, Value* v) {
+    llvm::errs() << "[" << location << "] Value type: " << *v->getType() 
+                 << ", TypeID: " << v->getType()->getTypeID() 
+                 << ", IsPointer: " << v->getType()->isPointerTy() << "\n";
+}
+
 // TODO
 
-// variables with the same and different locality don't work
-// ex. var n is int (in main) and var n is int (inside def swap)
+// semantic analysis that checks that the lhs of an assignment is not an array
 // Revisit semantic analysis on functions that are declared but not defined
 // Add semantic analysis for code that doesn't have break inside loops or return inside functions
 // Semantic analysis for parameters passed by reference
@@ -51,9 +71,11 @@ extern int loop_block_id;
 // Definition of functions with same name
 // == operator for varstentry might be errogenous
 // lineno in semantic errors is sometimes misplaced
+// check byte values for operators !,&,|
 
 class AST {
 public:
+    virtual ~AST() = default;
     virtual void printAST(std::ostream &out) const = 0;
     virtual void sem_analysis() {}
 
@@ -136,15 +158,18 @@ inline ostream &operator << (ostream &out, const AST &ast) {
 
 class Declaration : public AST {
 public:
+    virtual ~Declaration() override = default;
 };
 
 class Statement : public AST {
 public:
+    virtual ~Statement() override = default;
 	virtual bool is_break_or_cond() { return false; }
 };
 
 class Expression : public AST {
 public:
+    virtual ~Expression() override = default;
 	VarSTEntry get_var_type() { return var_type; }
 	virtual bool is_lvalue() { return false; }
 	virtual int get_arg_data() { return -1; } // used by the lvalue class 
@@ -157,7 +182,7 @@ protected:
 class Identifier : public Expression {
 public:
 	Identifier (char* Name) : name(Name) {}
-
+    ~Identifier() override { if (name) free(name); }
 	string get_name() { 
 		if (name!=nullptr) return string(name); 
 		else {
@@ -198,7 +223,7 @@ private:
 class Bool_const : public Expression {
 public:
 	Bool_const (int val) : value(val) {}
-	
+	~Bool_const() override = default;
 	int get_value() { return value; }
 
 	void sem_analysis() override { var_type = VarSTEntry(type_byte,vector<int>{}); }
@@ -218,7 +243,7 @@ private:
 class Char_const : public Expression {
 public:
 	Char_const (char val) : value(val) {}
-	
+	~Char_const() override = default;
 	char get_value() { return value; }
 
 	void sem_analysis() override { var_type = VarSTEntry(type_byte,vector<int>{}); }
@@ -245,7 +270,7 @@ private:
 class String_const : public Expression {
 public:
 	String_const (char* val) : value(val) {}
-	
+	~String_const() override { if (value) free(value); }
 	void sem_analysis() override { var_type = VarSTEntry(type_byte,vector<int>{(int)string(value).size()}); }
 
 	Value* igen() const override {
@@ -303,11 +328,16 @@ public:
 	L_value (Identifier* Id, String_const* str) :
 		id(Id), string_literal(str), expr_list() {}
 
-	void append (Expression* expr) { expr_list.push_back(expr); }
+    ~L_value() override {
+            if (id) delete id;
+            if (string_literal) delete string_literal;
+            for (auto expr : expr_list) {
+                delete expr;
+            }
+            expr_list.clear();
+        }
 
-    bool isArrayElement() const {
-        return !expr_list.empty();
-    }
+	void append (Expression* expr) { expr_list.push_back(expr); }
 
 	void sem_analysis() override {
 		if (string_literal!=nullptr) { 
@@ -335,12 +365,20 @@ public:
 
 		var_type = var;
 
+		// The following part is used for recording external variables
+		// used by the function. It is not part of semantic analysis
+		int scope_depth = vst.findscope(id->get_name());
+		string curfunc = func_name_stack.back();
+
+		if (extern_vars[Index].find(curfunc) == extern_vars[Index].end()) extern_vars[Index][curfunc] = {};
+		if (scope_depth != -1) extern_vars[Index][curfunc].push_back(make_pair(id->get_name(),scope_depth));
+
 	}
 
 	Value* igen() const override {
 		// Case that lvalue is a string const
 		if (string_literal!=nullptr) {
-			return string_literal->igen(); //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			return string_literal->igen();
 		}
 
 		vector<Value*> indices;
@@ -357,7 +395,48 @@ public:
 		if (i==func_decl_stack.back().size()) {
 			Function *CurFunc = Builder.GetInsertBlock()->getParent();
 			Argument* Arg = findParam(CurFunc,id->get_name());
-			if (Arg==nullptr) yyerror("Not yet fixed",this->get_line_num());
+			if (Arg==nullptr) {
+				// variable not in current scope or parameters
+				//yyerror("Not yet fixed",this->get_line_num());
+				
+				string curfunc_name = string(CurFunc->getName());
+				vector<pair<string,int>> extern_variables;
+				for (int i=Index; i>=0; i--) {
+					if (extern_vars[i].find(curfunc_name) != extern_vars[i].end()) {
+						extern_variables = extern_vars[i][curfunc_name];
+						break;
+					}
+				}
+				
+				Type* vartype;
+				int var_pos = 0;
+				
+				Arg = findParam(CurFunc,"1env");
+				for (auto &elem : extern_variables) {
+					if (elem.first == id->get_name()) break;
+					var_pos++;
+				}
+
+				for (auto &var : func_decl_stack[extern_variables[var_pos].second]) {
+					if (var.first == id->get_name()) {
+						vartype = PointerType::get(var.second, 0);
+						break;
+					}
+				}
+
+				auto Env_Type = function_env_types[curfunc_name];
+				Value* PtrPtr = Builder.CreateStructGEP(Env_Type, Arg, var_pos, "ptr.ptr");
+				Value* Ptr = Builder.CreateLoad(vartype, PtrPtr, "ptr");
+				
+				indices.push_back(c32(0));
+				for (auto &expr : expr_list) {
+					expr_res = expr->igen();
+					if (expr->is_lvalue()) expr_res = Builder.CreateLoad(expr_res->getType()->getPointerElementType(),expr_res);
+					indices.push_back(expr_res);
+				}
+
+				return Builder.CreateGEP(vartype->getPointerElementType(),Ptr,indices,id->get_name());
+			}
 
 			Ty = Arg->getType()->getPointerElementType();
 		
@@ -422,6 +501,16 @@ class Param_type : public Declaration {
 public:
 	Param_type( vector<Int_const*>* Int_list, Parameter_Type par_type, Data_Type* dtype) :
 		int_list(Int_list), parameter_type(par_type), data_type(dtype) {}
+
+    ~Param_type() override {
+        if (int_list) {
+            for (auto intval : *int_list) {
+                delete intval;   // delete each Int_const*
+            }
+            delete int_list;     // delete the vector itself
+            int_list = nullptr;
+        }
+    }
 
 	VarSTEntry get_param_type() {
 		vector<int> dims ;
@@ -506,6 +595,18 @@ public:
 	Parameter (vector<Identifier*>* Id_list, Param_type* par_type) :
 		id_list(Id_list), param_type(par_type) {}
  
+    ~Parameter() override {
+        if (id_list) {
+            for (auto id : *id_list) {
+                delete id;       // delete each Identifier
+            }
+            delete id_list;      // delete the vector itself
+            id_list = nullptr;
+        }
+        delete param_type;       // delete the Param_type object
+        param_type = nullptr;
+    }
+
 	vector<pair<string,VarSTEntry>> get_param_vector() { return params; }
 
 	void sem_analysis() override {
@@ -558,6 +659,18 @@ public:
 	Func_Header (Identifier* Id, Header_Type head_type, Data_Type* ret_type, vector<Parameter*>* par_list) :
 		id(Id), header_type(head_type), return_type(ret_type), param_list(par_list) {}
 
+    ~Func_Header() override {
+        delete id;  // delete the Identifier
+
+        if (param_list) {
+            for (auto param : *param_list) {
+                delete param;  // delete each Parameter
+            }
+            delete param_list;  // delete the vector itself
+            param_list = nullptr;
+        }
+    }
+
 	void set_to_decl() { header_type = declaration; }
 
 	void sem_analysis() override {
@@ -600,7 +713,33 @@ public:
 		FunctionType* FuncType;
 		unsigned Idx = 0;
 
-		if (header_type==definition) {
+		if (!TheModule->getFunction(id->get_name())) {
+
+			// Find type of environment parameter (for external variables)
+			string curfunc_name = id->get_name();
+			vector<pair<string,int>> extern_variables;
+			for (int i=Index; i>=0; i--) {
+				if (extern_vars[i].find(curfunc_name) != extern_vars[i].end()) {
+					extern_variables = extern_vars[i][curfunc_name];
+					break;
+				}
+			}
+			
+			vector<Type*> extern_types;
+			
+			for (auto &elem : extern_variables) {
+				for (auto &var : func_decl_stack[elem.second]) {
+					if (var.first == elem.first) {
+						extern_types.push_back(PointerType::get(var.second, 0));
+						break;
+					}
+				}
+			}
+
+			auto Env_Type = StructType::create(TheContext,"env");
+			Env_Type->setBody(extern_types);
+
+			// Get parameter types and names
 			if (param_list != nullptr) {
 				for (auto &param : *param_list) {
 					temp_params = param->get_Params();
@@ -609,15 +748,17 @@ public:
 						Parameter_Types.push_back(element.second);
 					}
 				}
-				if (return_type == nullptr) FuncType = FunctionType::get(Type::getVoidTy(TheContext),Parameter_Types,false);
-				else if (*return_type == type_integer) FuncType = FunctionType::get(Type::getInt32Ty(TheContext),Parameter_Types,false);
-				else FuncType = FunctionType::get(Type::getInt8Ty(TheContext),Parameter_Types,false);
 			}
-			else {
-				if (return_type == nullptr) FuncType = FunctionType::get(Type::getVoidTy(TheContext),{},false);
-				else if (*return_type == type_integer) FuncType = FunctionType::get(Type::getInt32Ty(TheContext),{},false);
-				else FuncType = FunctionType::get(Type::getInt8Ty(TheContext),{},false);
+
+			if (extern_variables.size()!=0) {
+				Parameter_Types.push_back(PointerType::get(Env_Type,0));
+				Parameter_Names.push_back("1env");
+				function_env_types[id->get_name()] = Env_Type;
 			}
+
+			if (return_type == nullptr) FuncType = FunctionType::get(Type::getVoidTy(TheContext),Parameter_Types,false);
+			else if (*return_type == type_integer) FuncType = FunctionType::get(Type::getInt32Ty(TheContext),Parameter_Types,false);
+			else FuncType = FunctionType::get(Type::getInt8Ty(TheContext),Parameter_Types,false);
 
 			Function* Func = Function::Create(FuncType,Function::InternalLinkage,id->get_name(),TheModule.get());
 			for (auto &Arg : Func->args()) { 
@@ -662,6 +803,13 @@ class Decl_list : public Declaration {
 public:
 	Decl_list () : decl_list() {}
 
+    ~Decl_list() override {
+        for (auto &decl : decl_list) {
+            delete decl;  // delete each Declaration
+        }
+        decl_list.clear(); // optional, clears the vector
+    }
+
 	void append (Declaration* decl) { decl_list.push_back(decl); }
 
 	void sem_analysis() override {
@@ -694,6 +842,18 @@ class Variable_decl : public Declaration {
 public:
 	Variable_decl (vector<Identifier*>* Var_list, vector<Int_const*>* Int_list, Data_Type* dtype) :
 		var_list(Var_list), int_list(Int_list), data_type(dtype) {}
+
+    ~Variable_decl() override {
+        if (var_list) {
+            for (auto &id : *var_list) delete id;
+            delete var_list;
+        }
+        if (int_list) {
+            for (auto &intval : *int_list) delete intval;
+            delete int_list;
+        }
+        // data_type is not owned here; do not delete
+    }
 
 	void sem_analysis() override {
 		vector<int> dims;
@@ -753,6 +913,13 @@ class Block : public Statement {
 public:
 	Block () : stmt_list() {}
 
+	~Block() override {
+		for (auto &stmt : stmt_list) {
+			delete stmt;
+		}
+		stmt_list.clear();
+	}
+
 	void append (Statement* stmt) { stmt_list.push_back(stmt); }
 
 	void sem_analysis() override {
@@ -767,7 +934,7 @@ public:
 		return nullptr;
 	}
 
-	void printAST (ostream &out) const override {	
+	void printAST (ostream &out) const override {
 		out << "Block(";
 		bool first = true;
 		for (const auto &stmt : stmt_list) {
@@ -789,12 +956,24 @@ public:
 	Func_Def (Func_Header *head, Decl_list *decl_list, Block *blk) :
 		header(head), declaration_list (decl_list), function_block(blk) {}
 	
+    ~Func_Def() override {
+        delete header;
+        delete declaration_list;
+        delete function_block;
+    }
+
 	void sem_analysis() override {
 		int prev_len = fst.getLen();
 
 		vst.insertScope();
 		header->sem_analysis();
 		fst.insertScope();
+		
+		map<string,vector<pair<string,int>>> newmap;
+		if (Index == extern_vars.size()-1) extern_vars.push_back(newmap);
+		Index++;
+		func_name_stack.push_back(header->get_func_name());
+
 		if (fst.getLen() == 1 && prev_len == 0) add_library_funcs(&fst);
 
 		declaration_list->sem_analysis();
@@ -802,7 +981,10 @@ public:
 
 		fst.popScope();
 		vst.popScope();
-		
+
+		Index--;
+		func_name_stack.pop_back();
+
 		return_type_vec.pop_back();
 
 		// Analysis for declared but undefined functions
@@ -828,6 +1010,7 @@ public:
 
 		func_decl_stack.push_back(vector<pair<string,Type*>>{});
 		func_var_stack.push_back(vector<pair<AllocaInst*,Type*>>{});
+		Index++;
 
 		// First define all inner functions, then this one
 		declaration_list->igen();
@@ -860,6 +1043,7 @@ public:
 
 		func_decl_stack.pop_back();
 		func_var_stack.pop_back();
+		Index--;
 
 		TheFPM->run(*TheFunction);
 		return TheFunction;
@@ -999,12 +1183,13 @@ public:
 
 		func_decl_stack.push_back(vector<pair<string,Type*>>{});
 		func_var_stack.push_back(vector<pair<AllocaInst*,Type*>>{});
+		Index = 0;
 
 		// First define all inner functions, then this one
 		declaration_list->igen();
 
 		// Create basic block
-		FunctionType *main_type = FunctionType::get(Type::getVoidTy(TheContext), {}, false);
+		FunctionType *main_type = FunctionType::get(i32, {}, false);
     	Function *main = Function::Create(main_type, Function::ExternalLinkage,"main", TheModule.get());
 		BasicBlock *BB = BasicBlock::Create(TheContext, "entry", main);
 		Builder.SetInsertPoint(BB);
@@ -1017,10 +1202,11 @@ public:
 
 		// Generate code for block
 		function_block->igen();
-		Builder.CreateRetVoid();
+		Builder.CreateRet(c32(0));
 
 		func_decl_stack.pop_back();
 		func_var_stack.pop_back();
+		Index--;
 
 		// Verify the IR.
 		bool bad = verifyModule(*TheModule, &errs());
@@ -1051,41 +1237,43 @@ private:
 // Class for assignment
 class Assignment : public Statement {
 public:
-    Assignment(L_value* Lval, Expression* Expr) : lval(Lval), expr(Expr) {}
+	Assignment (L_value* Lval, Expression* Expr) : lval(Lval), expr(Expr) {}
 
-    void sem_analysis() override {
-        lval->sem_analysis();
-        expr->sem_analysis();
-        if (!lval->get_var_type().dims.empty() && !lval->isArrayElement()) {
-            yyerror("Cannot assign to entire array", this->get_line_num());
-        }
-        if (lval->get_var_type() != expr->get_var_type()) {
-            yyerror("Type mismatch in assignment", this->get_line_num());
-        }
+
+    ~Assignment() override {
+        delete lval;
+        delete expr;
     }
 
-    Value* igen() const override {
-        Value* rhs = expr->igen();
-        Value* lhs = lval->igen();
-        if (expr->is_lvalue()) rhs = Builder.CreateLoad(rhs->getType()->getPointerElementType(), rhs);
-        return Builder.CreateStore(rhs, lhs);
-    }
+	void sem_analysis() override {
+		lval->sem_analysis();
+		expr->sem_analysis();
+		if (lval->get_var_type() != expr->get_var_type()) yyerror("Type mismatch in assignmnent", this->get_line_num());
+	}
 
-    void printAST(std::ostream &out) const override {  // <--- must match exactly
-        out << "Assign(" << *lval << "," << *expr << ")";
-    }
+	Value* igen() const override {
+		Value* rhs = expr->igen();
+		Value* lhs = lval->igen();
+		if (expr->is_lvalue()) rhs = Builder.CreateLoad(rhs->getType()->getPointerElementType(),rhs);
+		return Builder.CreateStore(rhs,lhs);
+	}
+
+	void printAST (ostream &out) const override {
+		out << "Assign(" << *lval << "," << *expr << ")";
+	}
 
 private:
-    L_value* lval;
-    Expression* expr;
+	L_value* lval;
+	Expression* expr;
 };
-
 
 
 // Class for exit command
 class Exit : public Statement {
 public:
 	Exit () {}
+
+    ~Exit() override = default;
 
 	void sem_analysis() override {
 		Data_Type* func_return_type = return_type_vec[return_type_vec.size()-1].second;
@@ -1116,6 +1304,10 @@ private:
 class Return : public Statement {
 public:
 	Return (Expression* Expr) :  expr(Expr) {}
+
+    ~Return() override {
+        delete expr;  // free the owned Expression
+    }
 
 	void sem_analysis() override {
 		expr->sem_analysis();
@@ -1153,6 +1345,10 @@ private:
 class Break : public Statement {
 public:
 	Break (Identifier* Id) : id(Id) {}
+
+    ~Break() override {
+        delete id;  // free the owned Identifier
+    }
 
 	void sem_analysis() override {
 		char msg[1000];
@@ -1198,6 +1394,11 @@ class Continue : public Statement {
 public:
 	Continue (Identifier* Id) : id(Id) {}
 
+
+    ~Continue() override {
+        delete id; // free the owned Identifier
+    }
+
 	void sem_analysis() override {
 		char msg[1000];
 
@@ -1241,6 +1442,11 @@ private:
 class Loop : public Statement {
 public:
 	Loop (Identifier* Id, Block* blk) : id(Id), block(blk) {}
+
+    ~Loop() override {
+        delete id;
+        delete block;
+    }
 
 	void sem_analysis() override {
 		char msg[1000];
@@ -1297,6 +1503,11 @@ private:
 class If : public Statement {
 public:
 	If () : cond_list(), if_list() {}
+
+    ~If() override {
+        for (auto cond : cond_list) delete cond;
+        for (auto blk : if_list) delete blk;
+    }
 
 	void append (Expression* cond, Block* blk) { 
 		cond_list.push_back(cond);
@@ -1396,6 +1607,14 @@ public:
 	Proc_call (Identifier* Id, vector<Expression*>* Expr_list) :
 		id(Id), expr_list(Expr_list) {}
 
+    ~Proc_call() override {
+        if (expr_list != nullptr) {
+            for (auto expr : *expr_list) delete expr;
+            delete expr_list;
+        }
+        delete id;
+    }
+
 	void sem_analysis() override {
 		FuncSTEntry* func_info = fst.lookup(id->get_name(),this->get_line_num());
 		char msg[1000];
@@ -1463,6 +1682,42 @@ public:
 			}
 		}
 
+		vector<pair<string,int>> extern_variables;
+		for (int i=Index+1; i>=0; i--) {
+			if (extern_vars[i].find(id->get_name()) != extern_vars[i].end()) {
+				extern_variables = extern_vars[i][id->get_name()];
+				break;
+			}
+		}
+
+		if (!extern_variables.empty()) {
+			vector<Type*> extern_types;
+			vector<AllocaInst*> extern_vals;
+			int j;
+
+			for (auto &elem : extern_variables) {
+				j = 0;
+				for (auto &var : func_decl_stack[elem.second]) {
+					if (var.first == elem.first) {
+						extern_types.push_back(PointerType::get(var.second, 0));
+						extern_vals.push_back(func_var_stack[elem.second][j].first);
+						break;
+					}
+					j++;
+				}
+			}
+
+			auto Env_Type = function_env_types[id->get_name()];
+			AllocaInst* env = Builder.CreateAlloca(Env_Type, nullptr, "env");
+		
+			for (int i=0; i<extern_variables.size(); i++) {
+				Value* slot = Builder.CreateStructGEP(Env_Type, env, i);
+				Builder.CreateStore(extern_vals[i], slot);
+			}
+
+			parameters.push_back(env);
+		}
+
 		return Builder.CreateCall(calleeFunc, parameters);
 	}
 
@@ -1486,6 +1741,14 @@ class Func_call : public Expression {
 public:
 	Func_call (Identifier* Id, vector<Expression*>* Expr_list) :
 		id(Id), expr_list(Expr_list) {}
+
+    ~Func_call() override {
+        if (expr_list != nullptr) {
+            for (auto expr : *expr_list) delete expr;
+            delete expr_list;
+        }
+        delete id;
+    }
 
 	void sem_analysis() override {
 		FuncSTEntry* func_info = fst.lookup(id->get_name(),this->get_line_num());
@@ -1529,35 +1792,75 @@ public:
 		var_type = VarSTEntry(*func_info->return_type,vector<int>{});
 	}
 
-	Value* igen() const override {
-		Function* calleeFunc = TheModule->getFunction(id->get_name());
-		vector<Value*> parameters;
-		Value* currentVal;
-		Argument* arg;
-		int Idx=0;
+    Value* igen() const override {
+        Function* calleeFunc = TheModule->getFunction(id->get_name());
+        vector<Value*> parameters;
+        Value* currentVal;
+        Argument* arg;
+        int Idx = 0;
 
-		if (expr_list!=nullptr) {
-			for (auto & expr : *expr_list) {
-				currentVal = expr->igen();
-				
-				if (expr->is_lvalue()) {
-					arg = next(calleeFunc->arg_begin(), Idx);
-					if (param_metadata[arg]==1 && expr->get_arg_data()!=1) {
-						currentVal = Builder.CreateGEP(currentVal->getType()->getPointerElementType(),currentVal,{c32(0),c32(0)});
-					}
-					else if (param_metadata[arg]==2) {
-						currentVal = Builder.CreateLoad(currentVal->getType()->getPointerElementType(),currentVal);
-					}
-				}
+        // Generate parameter values
+        if (expr_list != nullptr) {
+            for (auto &expr : *expr_list) {
+                currentVal = expr->igen();
 
-				parameters.push_back(currentVal);
-				Idx++;
-			}
-		}
+                if (expr->is_lvalue()) {
+                    arg = next(calleeFunc->arg_begin(), Idx);
+                    if (param_metadata[arg] == 1 && expr->get_arg_data() != 1) {
+                        currentVal = Builder.CreateGEP(
+                            currentVal->getType()->getPointerElementType(),
+                            currentVal,
+                            {c32(0), c32(0)}
+                        );
+                    } else if (param_metadata[arg] == 2) {
+                        currentVal = Builder.CreateLoad(
+                            currentVal->getType()->getPointerElementType(),
+                            currentVal
+                        );
+                    }
+                }
 
-		return Builder.CreateCall(calleeFunc, parameters,"calltmp");
-	}
+                parameters.push_back(currentVal);
+                Idx++;
+            }
+        }
 
+        // Handle extern variables safely
+        vector<pair<string, int>> extern_variables;
+        for (int i = Index + 1; i >= 0; i--) {
+            if (i < static_cast<int>(extern_vars.size())) {
+                auto it = extern_vars[i].find(id->get_name());
+                if (it != extern_vars[i].end()) {
+                    extern_variables = it->second;
+                    break;
+                }
+            }
+        }
+
+        if (!extern_variables.empty()) {
+            auto Env_Type = function_env_types[id->get_name()];
+            AllocaInst* env = Builder.CreateAlloca(Env_Type, nullptr, "env");
+
+            for (int i = 0; i < static_cast<int>(extern_variables.size()); i++) {
+                const auto& elem = extern_variables[i];
+                int j = 0;
+                for (auto &var : func_decl_stack[elem.second]) {
+                    if (var.first == elem.first) {
+                        Value* slot = Builder.CreateStructGEP(Env_Type, env, i);
+                        Builder.CreateStore(func_var_stack[elem.second][j].first, slot);
+                        break;
+                    }
+                    j++;
+                }
+            }
+
+            parameters.push_back(env);
+        }
+
+        return Builder.CreateCall(calleeFunc, parameters, "calltmp");
+    }
+
+	
 	void printAST (ostream &out) const override {
 		out << "Func_call(" << *id; 
 		if (expr_list!= nullptr) {
@@ -1571,177 +1874,197 @@ private:
 	vector<Expression*>* expr_list;
 };
 
+
 // Class for expressions
 class Operation : public Expression {
 public:
-    Operation(Expression* Expr1, string operand, Expression* Expr2 = nullptr)
-        : expr1(Expr1), op(operand), expr2(Expr2) {}
-
-    void err_message(Data_Type type1, Data_Type type2, int msg_type) {
-        char msg[1000];
-        if (msg_type == 1) {
-            snprintf(msg, sizeof(msg), "Illegal operation %s between %s and %s",
-                     op.c_str(), data_name[type1], data_name[type2]);
-        } else if (msg_type == 2) {
-            snprintf(msg, sizeof(msg), "Illegal operation %s for %s",
-                     op.c_str(), data_name[type1]);
-        } else {
-            snprintf(msg, sizeof(msg), "Operands of operator %s cannot be multi-dimensional arrays",
-                     op.c_str());
-        }
-        yyerror(msg, this->get_line_num());
+	Operation (Expression* Expr1, string operand, Expression* Expr2) : 
+		expr1(Expr1), op(operand), expr2(Expr2) {}
+	
+    ~Operation() override {
+        delete expr1;
+        if (expr2) delete expr2;
     }
 
-    void sem_analysis() override {
-        expr1->sem_analysis();
-        if (expr2) expr2->sem_analysis();
+	void err_message(Data_Type type1, Data_Type type2, int msg_type) {
+		char msg[1000];
 
-        VarSTEntry var1 = expr1->get_var_type();
-        VarSTEntry var2 = expr2 ? expr2->get_var_type() : VarSTEntry(type_bool, {});
+		if (msg_type == 1) {
+			snprintf(msg,sizeof(msg),"Illegal operation %s between %s and %s",op.c_str(),data_name[type1],data_name[type2]);
+		}
+		else if (msg_type == 2) {
+			snprintf(msg,sizeof(msg),"Illegal operation %s for %s",op.c_str(),data_name[type1]);
+		}
+		else {
+			snprintf(msg,sizeof(msg),"Operands of operator %s cannot be multi-dimensional arrays",op.c_str());
+		}
 
-        if (!var1.dims.empty() || !var2.dims.empty()) err_message(type_bool, type_bool, 3);
+		yyerror(msg, this->get_line_num());
+	}
 
-        Data_Type type1 = var1.basic_type;
-        Data_Type type2 = var2.basic_type;
+	void sem_analysis() override {
+		VarSTEntry var_type1, var_type2;
+		Data_Type type1, type2;
+		var_type2 = VarSTEntry(type_bool,{});  // To avoid undefined behavior
 
-        if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
-            if (type1 == type_integer && type2 == type_integer) var_type = VarSTEntry(type_integer, {});
-            else if (type1 == type_byte && type2 == type_byte) var_type = VarSTEntry(type_byte, {});
-            else err_message(type1, type2, 1);
-        } else if (op == "++" || op == "--") {
-            if (type1 == type_integer) var_type = VarSTEntry(type_integer, {});
-            else err_message(type1, type_bool, 2);
-        } else if (op == "|" || op == "&") {
-            if (type1 == type_byte && type2 == type_byte) var_type = VarSTEntry(type_byte, {});
-            else err_message(type1, type2, 1);
-        } else if (op == "!") {
-            if (type1 == type_byte) var_type = VarSTEntry(type_byte, {});
-            else err_message(type1, type_bool, 2);
-        } else if (op == "=" || op == "<" || op == ">" || op == "<>" || op == "<=" || op == ">=") {
-            if ((type1 == type_integer && type2 == type_integer) ||
-                (type1 == type_byte && type2 == type_byte)) var_type = VarSTEntry(type_bool, {});
-            else err_message(type1, type2, 1);
-        } else if (op == "not") {
-            if (type1 == type_bool) var_type = VarSTEntry(type_bool, {});
-            else err_message(type1, type_bool, 2);
-        } else {  // and/or
-            if (type1 == type_bool && type2 == type_bool) var_type = VarSTEntry(type_bool, {});
-            else err_message(type1, type2, 1);
-        }
-    }
+		expr1->sem_analysis();
+		if (expr2!=nullptr) expr2->sem_analysis();
 
-    Value* igen() const override {
-        Value* val1 = expr1->igen();
-        Value* val2 = expr2 ? expr2->igen() : nullptr;
+		var_type1 = expr1->get_var_type();
+		if (expr2!=nullptr) var_type2 = expr2->get_var_type();
 
-        if (expr1->is_lvalue()) val1 = Builder.CreateLoad(val1->getType()->getPointerElementType(), val1);
-        if (expr2 && expr2->is_lvalue()) val2 = Builder.CreateLoad(val2->getType()->getPointerElementType(), val2);
+		if (!var_type1.dims.empty() || !var_type2.dims.empty()) err_message(type_bool,type_bool,3);
+		type1 = var_type1.basic_type;
+		type2 = var_type2.basic_type;
 
-        auto get_const = [&](uint64_t v, Type* type) {
-            return ConstantInt::get(type, v);
-        };
+		if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%") {
+			if (type1 == type_integer && type2 == type_integer) var_type = VarSTEntry(type_integer,{});
+			else if (type1 == type_byte && type2 == type_byte) var_type = VarSTEntry(type_byte,{});
+			else err_message(type1,type2,1);
+		}
+		else if (op == "++" || op == "--") {
+			if (type1 == type_integer) var_type = VarSTEntry(type_integer,{});
+			else err_message(type1,type_bool,2);
+		}
+		else if (op == "|" || op == "&") {
+			if (type1 == type_byte && type2 == type_byte) var_type = VarSTEntry(type_byte,{});
+			else err_message(type1,type2,1);
+		}
+		else if (op == "!") {
+			if (type1 == type_byte) var_type = VarSTEntry(type_byte,{});
+			else err_message(type1,type_bool,2);
+		}
+		else if (op == "=" || op == "<" || op == ">" || op == "<>" || op == "<=" || op == ">=") {
+			if (type1 == type_integer && type2 == type_integer) var_type = VarSTEntry(type_bool,{});
+			else if (type1 == type_byte && type2 == type_byte) var_type = VarSTEntry(type_bool,{});
+			else err_message(type1,type2,1);
+		}
+		else if (op == "not") {
+			if (type1 == type_bool) var_type = VarSTEntry(type_bool,{});
+			else err_message(type1,type_bool,2);
+		}
+		else {  // Case for operations and,or
+			if (type1 == type_bool && type2 == type_bool) var_type = VarSTEntry(type_bool,{});
+			else err_message(type1,type2,1);
+		}
+	}
 
-        Type* type1 = val1->getType();
-        Type* type2 = val2 ? val2->getType() : nullptr;
+	Value* igen() const override{
+		Value* val1 = expr1->igen();
+		Value* val2;
+		if (expr2!=nullptr && op!="and" && op!="or") val2 = expr2->igen();
 
-        if (op == "+") return Builder.CreateAdd(val1, val2, "addtmp");
-        if (op == "-") return Builder.CreateSub(val1, val2, "subtmp");
-        if (op == "*") return Builder.CreateMul(val1, val2, "multmp");
-        if (op == "/") {
-            if (type1->isIntegerTy(32)) return Builder.CreateSDiv(val1, val2, "sdivtmp");
-            else return Builder.CreateUDiv(val1, val2, "udivtmp");
-        }
-        if (op == "%") {
-            if (type1->isIntegerTy(32)) return Builder.CreateSRem(val1, val2, "sremtmp");
-            else return Builder.CreateURem(val1, val2, "uremtmp");
-        }
-        if (op == "++") return val1;
-        if (op == "--") return Builder.CreateNeg(val1, "negtmp");
-        if (op == "=") return Builder.CreateICmpEQ(val1, val2, "is_equal");
-        if (op == "<>") return Builder.CreateICmpNE(val1, val2, "is_not_equal");
-        if (op == ">") return type1->isIntegerTy(32) ? Builder.CreateICmpSGT(val1, val2, "is_greater")
-                                                    : Builder.CreateICmpUGT(val1, val2, "is_greater");
-        if (op == "<") return type1->isIntegerTy(32) ? Builder.CreateICmpSLT(val1, val2, "is_less")
-                                                    : Builder.CreateICmpULT(val1, val2, "is_less");
-        if (op == ">=") return type1->isIntegerTy(32) ? Builder.CreateICmpSGE(val1, val2, "is_greater_or_eq")
-                                                     : Builder.CreateICmpUGE(val1, val2, "is_greater_or_eq");
-        if (op == "<=") return type1->isIntegerTy(32) ? Builder.CreateICmpSLE(val1, val2, "is_less_or_eq")
-                                                     : Builder.CreateICmpULE(val1, val2, "is_less_or_eq");
+		if (expr1->is_lvalue()) val1 = Builder.CreateLoad(val1->getType()->getPointerElementType(),val1);
+		if (expr2!=nullptr && op!="and" && op!="or") if (expr2->is_lvalue()) val2 = Builder.CreateLoad(val2->getType()->getPointerElementType(),val2);
 
-        if (op == "!") {
-            Value* zero = get_const(0, type1);
-            Value* one = get_const(1, type1);
-            Value* is_zero = Builder.CreateICmpEQ(val1, zero);
-            return Builder.CreateSelect(is_zero, one, zero, "boolnottmp");
-        }
+		if (op == "+") { return Builder.CreateAdd(val1, val2,"addtmp"); }
+		else if (op == "-") { return Builder.CreateSub(val1, val2,"subtmp"); }
+		else if (op == "*") { return Builder.CreateMul(val1, val2,"multmp"); }
+		else if (op == "/") { 
+			if (val1->getType() == Type::getInt32Ty(TheContext)) return Builder.CreateSDiv(val1, val2,"sdivtmp"); 
+			else return Builder.CreateUDiv(val1, val2,"udivtmp");
+		}
+		else if (op == "%") { 
+			if (val1->getType() == Type::getInt32Ty(TheContext)) return Builder.CreateSRem(val1, val2,"sremtmp"); 
+			else return Builder.CreateURem(val1, val2,"uremtmp");
+		}
+		else if (op == "++") { return val1; }
+		else if (op == "--") { return Builder.CreateNeg(val1,"negtmp"); }
+		else if (op == "=") { return Builder.CreateICmpEQ(val1,val2,"is_equal"); }
+		else if (op == "<>") { return Builder.CreateICmpNE(val1,val2,"is_not_equal"); }
+		else if (op == ">") { 
+			if (val1->getType() == Type::getInt32Ty(TheContext)) return Builder.CreateICmpSGT(val1,val2,"is_greater");
+			else return Builder.CreateICmpUGT(val1,val2,"is_greater");
+		}
+		else if (op == "<") { 
+			if (val1->getType() == Type::getInt32Ty(TheContext)) return Builder.CreateICmpSLT(val1,val2,"is_less");
+			else return Builder.CreateICmpULT(val1,val2,"is_less");
+		}
+		else if (op == ">=") { 
+			if (val1->getType() == Type::getInt32Ty(TheContext)) return Builder.CreateICmpSGE(val1,val2,"is_greater_or_eq");
+			else return Builder.CreateICmpUGE(val1,val2,"is_greater_or_eq");
+		}
+		else if (op == "<=") { 
+			if (val1->getType() == Type::getInt32Ty(TheContext)) return Builder.CreateICmpSLE(val1,val2,"is_less_or_eq");
+			else return Builder.CreateICmpULE(val1,val2,"is_less_or_eq");
+		}
+		else if (op == "!") { 
+			Value* is_zero = Builder.CreateICmpEQ(val1,c8(0));
+			return Builder.CreateSelect(is_zero,c8(1),c8(0),"boolnottmp");
+		}
+		else if (op == "||") { return Builder.CreateOr(val1,val2,"boolortmp"); }
+		else if (op == "&&") { return Builder.CreateAnd(val1,val2,"boolandtmp"); }
+		else if (op == "not") { return Builder.CreateNot(val1,"nottmp"); }
+		else if (op == "or") { 
+			BasicBlock *PrevBB = Builder.GetInsertBlock();
+			Function *TheFunction = PrevBB->getParent();
+			BasicBlock *Res_is_zero = BasicBlock::Create(TheContext, "res_is_zero", TheFunction,set_bb_pos(PrevBB));
+    		BasicBlock *Result = BasicBlock::Create(TheContext, "result", TheFunction,set_bb_pos(Res_is_zero));
+			Value* is_one = Builder.CreateICmpEQ(val1,c1(1));
+			Builder.CreateCondBr(is_one, Result, Res_is_zero);
+			Builder.SetInsertPoint(Res_is_zero);
+			val2=expr2->igen();
+			if (expr2->is_lvalue()) val2 = Builder.CreateLoad(val2->getType()->getPointerElementType(),val2);
+			Value* res = Builder.CreateOr(val1,val2,"ortmp");
+			Builder.CreateBr(Result);
+			Builder.SetInsertPoint(Result);
+			PHINode *phi_iter = Builder.CreatePHI(IntegerType::get(TheContext, 1), 2, "get_res");
+			phi_iter->addIncoming(val1,PrevBB);
+			phi_iter->addIncoming(res,Res_is_zero);
+			return phi_iter;
+		}
+		else if (op == "and") { 
+			BasicBlock *PrevBB = Builder.GetInsertBlock();
+			Function *TheFunction = PrevBB->getParent();
+			BasicBlock *Res_is_one = BasicBlock::Create(TheContext, "res_is_one", TheFunction,set_bb_pos(PrevBB));
+    		BasicBlock *Result = BasicBlock::Create(TheContext, "result", TheFunction,set_bb_pos(Res_is_one));
+			Value* is_zero = Builder.CreateICmpEQ(val1,c1(0));
+			Builder.CreateCondBr(is_zero, Result, Res_is_one);
+			Builder.SetInsertPoint(Res_is_one);
+			val2=expr2->igen();
+			if (expr2->is_lvalue()) val2 = Builder.CreateLoad(val2->getType()->getPointerElementType(),val2);
+			Value* res = Builder.CreateAnd(val1,val2,"andtmp");
+			Builder.CreateBr(Result);
+			Builder.SetInsertPoint(Result);
+			PHINode *phi_iter = Builder.CreatePHI(IntegerType::get(TheContext, 1), 2, "get_res");
+			phi_iter->addIncoming(val1,PrevBB);
+			phi_iter->addIncoming(res,Res_is_one);
+			return phi_iter;
+		}
+		else return nullptr;
+		
+	}
 
-        if (op == "|" || op == "&") {
-            // Extend bytes to i32, do op, truncate back
-            if (type1->isIntegerTy(8)) {
-                val1 = Builder.CreateZExt(val1, i32, "ext1");
-                val2 = Builder.CreateZExt(val2, i32, "ext2");
-                Value* res = (op == "|") ? Builder.CreateOr(val1, val2, "ortmp")
-                                         : Builder.CreateAnd(val1, val2, "andtmp");
-                return Builder.CreateTrunc(res, i8, "trunctmp");
-            } else {
-                return (op == "|") ? Builder.CreateOr(val1, val2, "ortmp")
-                                   : Builder.CreateAnd(val1, val2, "andtmp");
-            }
-        }
-
-        if (op == "and" || op == "or") {
-            // short-circuit PHI
-            BasicBlock* prevBB = Builder.GetInsertBlock();
-            Function* F = prevBB->getParent();
-            BasicBlock* leftBB = BasicBlock::Create(TheContext, "left", F);
-            BasicBlock* rightBB = BasicBlock::Create(TheContext, "right", F);
-            BasicBlock* mergeBB = BasicBlock::Create(TheContext, "merge", F);
-
-            if (op == "and") {
-                Value* is_zero = Builder.CreateICmpEQ(val1, get_const(0, type1));
-                Builder.CreateCondBr(is_zero, mergeBB, rightBB);
-            } else { // or
-                Value* is_one = Builder.CreateICmpEQ(val1, get_const(1, type1));
-                Builder.CreateCondBr(is_one, mergeBB, rightBB);
-            }
-
-            // Right block
-            Builder.SetInsertPoint(rightBB);
-            Value* val2_eval = expr2->igen();
-            if (expr2->is_lvalue()) val2_eval = Builder.CreateLoad(val2_eval->getType()->getPointerElementType(), val2_eval);
-            Value* rhs_result = (op == "and") ? Builder.CreateAnd(val1, val2_eval, "andtmp")
-                                              : Builder.CreateOr(val1, val2_eval, "ortmp");
-            Builder.CreateBr(mergeBB);
-
-            // Merge block
-            Builder.SetInsertPoint(mergeBB);
-            PHINode* phi = Builder.CreatePHI(type1, 2, "phi_tmp");
-            phi->addIncoming(val1, prevBB);
-            phi->addIncoming(rhs_result, rightBB);
-            return phi;
-        }
-
-        if (op == "not") {
-            Value* zero = get_const(0, type1);
-            Value* one = get_const(1, type1);
-            Value* is_zero = Builder.CreateICmpEQ(val1, zero);
-            return Builder.CreateSelect(is_zero, one, zero, "nottmp");
-        }
-
-        return nullptr;
-    }
-
-    void printAST(ostream& out) const override {
-        out << op << "(" << *expr1;
-        if (expr2) out << "," << *expr2;
-        out << ")";
-    }
+	void printAST (ostream &out) const override {
+		if (op == "+") { out << "Add"; }
+		else if (op == "-") { out << "Sub"; }
+		else if (op == "*") { out << "Mult"; }
+		else if (op == "/") { out << "Div"; }
+		else if (op == "%") { out << "Mod"; }
+		else if (op == "&") { out << "And_Bitwise"; }
+		else if (op == "|") { out << "Or_Bitwise"; }
+		else if (op == "!") { out << "Not_Bitwise"; }
+		else if (op == "++") { out << "Plus_Sign"; }
+		else if (op == "--") { out << "Minus_Sign"; }
+		else if (op == "and") { out << "And"; }
+		else if (op == "or") { out << "Or"; }
+		else if (op == "not") { out << "Not"; }
+		else if (op == "=")  { out << "Equal"; }
+		else if (op == "<")  { out << "Less"; }
+		else if (op == ">")  { out << "More"; }
+		else if (op == "<=") { out << "Less_or_eq"; }
+		else if (op == ">=") { out << "More_or_eq"; }
+		else if (op == "<>") { out << "Not_eq"; }
+		
+		out << "(" << *expr1;
+		if (expr2 != nullptr) out << "," << *expr2;
+		out << ")";
+	}
 
 private:
-    Expression* expr1;
-    Expression* expr2;
-    string op;
+	Expression* expr1;
+	Expression* expr2;
+	string op;
 };
-
 
 #endif
