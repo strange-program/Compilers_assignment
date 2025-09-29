@@ -76,6 +76,12 @@ inline void debugValue(const char* location, Value* v) {
 class AST {
 public:
     virtual ~AST() = default;
+
+    static void cleanup() {
+        TheModule.reset();
+        TheFPM.reset();
+    }
+
     virtual void printAST(std::ostream &out) const = 0;
     virtual void sem_analysis() {}
 
@@ -660,13 +666,16 @@ public:
 		id(Id), header_type(head_type), return_type(ret_type), param_list(par_list) {}
 
     ~Func_Header() override {
-        delete id;  // delete the Identifier
+        delete id;
+        id = nullptr;
+        delete return_type;
+        return_type = nullptr;
 
         if (param_list) {
             for (auto param : *param_list) {
-                delete param;  // delete each Parameter
+                delete param;  
             }
-            delete param_list;  // delete the vector itself
+            delete param_list;
             param_list = nullptr;
         }
     }
