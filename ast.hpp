@@ -164,18 +164,15 @@ inline ostream &operator << (ostream &out, const AST &ast) {
 
 class Declaration : public AST {
 public:
-    virtual ~Declaration() override = default;
 };
 
 class Statement : public AST {
 public:
-    virtual ~Statement() override = default;
 	virtual bool is_break_or_cond() { return false; }
 };
 
 class Expression : public AST {
 public:
-    virtual ~Expression() override = default;
 	VarSTEntry get_var_type() { return var_type; }
 	virtual bool is_lvalue() { return false; }
 	virtual int get_arg_data() { return -1; } // used by the lvalue class 
@@ -229,7 +226,7 @@ private:
 class Bool_const : public Expression {
 public:
 	Bool_const (int val) : value(val) {}
-	~Bool_const() override = default;
+	
 	int get_value() { return value; }
 
 	void sem_analysis() override { var_type = VarSTEntry(type_byte,vector<int>{}); }
@@ -249,7 +246,7 @@ private:
 class Char_const : public Expression {
 public:
 	Char_const (char val) : value(val) {}
-	~Char_const() override = default;
+	
 	char get_value() { return value; }
 
 	void sem_analysis() override { var_type = VarSTEntry(type_byte,vector<int>{}); }
@@ -333,7 +330,6 @@ class L_value : public Expression {
 public:	
 	L_value (Identifier* Id, String_const* str) :
 		id(Id), string_literal(str), expr_list() {}
-
     ~L_value() override {
             if (id) delete id;
             if (string_literal) delete string_literal;
@@ -342,7 +338,6 @@ public:
             }
             expr_list.clear();
         }
-
 	void append (Expression* expr) { expr_list.push_back(expr); }
 
 	void sem_analysis() override {
@@ -375,9 +370,11 @@ public:
 		// used by the function. It is not part of semantic analysis
 		int scope_depth = vst.findscope(id->get_name());
 		string curfunc = func_name_stack.back();
+		
+		if (Index == 0) return;
 
-		if (extern_vars[Index].find(curfunc) == extern_vars[Index].end()) extern_vars[Index][curfunc] = {};
-		if (scope_depth != -1) extern_vars[Index][curfunc].push_back(make_pair(id->get_name(),scope_depth));
+		if (extern_vars[Index-1].find(curfunc) == extern_vars[Index-1].end()) extern_vars[Index-1][curfunc] = {};
+		if (scope_depth != -1) extern_vars[Index-1][curfunc].push_back(make_pair(id->get_name(),scope_depth));
 
 	}
 
@@ -507,7 +504,6 @@ class Param_type : public Declaration {
 public:
 	Param_type( vector<Int_const*>* Int_list, Parameter_Type par_type, Data_Type* dtype) :
 		int_list(Int_list), parameter_type(par_type), data_type(dtype) {}
-
     ~Param_type() override {
         if (int_list) {
             for (auto intval : *int_list) delete intval;   // delete each Int_const*
@@ -519,8 +515,6 @@ public:
             data_type = nullptr;
         }
     }
-
-
 	VarSTEntry get_param_type() {
 		vector<int> dims ;
 		if (int_list != nullptr) {
@@ -603,7 +597,6 @@ class Parameter : public Declaration {
 public:
 	Parameter (vector<Identifier*>* Id_list, Param_type* par_type) :
 		id_list(Id_list), param_type(par_type) {}
- 
     ~Parameter() override {
         if (id_list) {
             for (auto id : *id_list) delete id;
@@ -614,8 +607,7 @@ public:
             delete param_type;  
             param_type = nullptr;
         }
-    }
-
+    } 
 	vector<pair<string,VarSTEntry>> get_param_vector() { return params; }
 
 	void sem_analysis() override {
@@ -667,7 +659,6 @@ class Func_Header : public Declaration {
 public:
 	Func_Header (Identifier* Id, Header_Type head_type, Data_Type* ret_type, vector<Parameter*>* par_list) :
 		id(Id), header_type(head_type), return_type(ret_type), param_list(par_list) {}
-
     ~Func_Header() override {
         delete id;
         id = nullptr;
@@ -682,7 +673,6 @@ public:
             param_list = nullptr;
         }
     }
-
 	void set_to_decl() { header_type = declaration; }
 
 	void sem_analysis() override {
@@ -814,14 +804,12 @@ private:
 class Decl_list : public Declaration {
 public:
 	Decl_list () : decl_list() {}
-
     ~Decl_list() override {
         for (auto &decl : decl_list) {
             delete decl;  // delete each Declaration
         }
         decl_list.clear(); // optional, clears the vector
     }
-
 	void append (Declaration* decl) { decl_list.push_back(decl); }
 
 	void sem_analysis() override {
@@ -854,7 +842,6 @@ class Variable_decl : public Declaration {
 public:
 	Variable_decl (vector<Identifier*>* Var_list, vector<Int_const*>* Int_list, Data_Type* dtype) :
 		var_list(Var_list), int_list(Int_list), data_type(dtype) {}
-
     ~Variable_decl() override {
         if (var_list) {
             for (auto &id : *var_list) delete id;
@@ -869,7 +856,6 @@ public:
         delete data_type;   // <-- FIX: free the allocated Data_Type
         data_type = nullptr;
     }
-
 	void sem_analysis() override {
 		vector<int> dims;
 		
@@ -927,14 +913,12 @@ private:
 class Block : public Statement {
 public:
 	Block () : stmt_list() {}
-
 	~Block() override {
 		for (auto &stmt : stmt_list) {
 			delete stmt;
 		}
 		stmt_list.clear();
 	}
-
 	void append (Statement* stmt) { stmt_list.push_back(stmt); }
 
 	void sem_analysis() override {
@@ -970,13 +954,11 @@ class Func_Def : public Declaration {
 public:
 	Func_Def (Func_Header *head, Decl_list *decl_list, Block *blk) :
 		header(head), declaration_list (decl_list), function_block(blk) {}
-	
     ~Func_Def() override {
         delete header;
         delete declaration_list;
         delete function_block;
-    }
-
+    }	
 	void sem_analysis() override {
 		int prev_len = fst.getLen();
 
@@ -985,8 +967,9 @@ public:
 		fst.insertScope();
 		
 		map<string,vector<pair<string,int>>> newmap;
-		if (Index == extern_vars.size()-1) extern_vars.push_back(newmap);
-		Index++;
+		if (!extern_vars.empty()) Index++;
+		if (Index == extern_vars.size()) { extern_vars.push_back(newmap); }
+		
 		func_name_stack.push_back(header->get_func_name());
 
 		if (fst.getLen() == 1 && prev_len == 0) add_library_funcs(&fst);
@@ -1204,7 +1187,7 @@ public:
 		declaration_list->igen();
 
 		// Create basic block
-		FunctionType *main_type = FunctionType::get(i32, {}, false);
+		FunctionType *main_type = FunctionType::get(Type::getVoidTy(TheContext), {}, false);
     	Function *main = Function::Create(main_type, Function::ExternalLinkage,"main", TheModule.get());
 		BasicBlock *BB = BasicBlock::Create(TheContext, "entry", main);
 		Builder.SetInsertPoint(BB);
@@ -1217,7 +1200,7 @@ public:
 
 		// Generate code for block
 		function_block->igen();
-		Builder.CreateRet(c32(0));
+		Builder.CreateRetVoid();
 
 		func_decl_stack.pop_back();
 		func_var_stack.pop_back();
@@ -1253,13 +1236,10 @@ private:
 class Assignment : public Statement {
 public:
 	Assignment (L_value* Lval, Expression* Expr) : lval(Lval), expr(Expr) {}
-
-
     ~Assignment() override {
         delete lval;
         delete expr;
     }
-
 	void sem_analysis() override {
 		lval->sem_analysis();
 		expr->sem_analysis();
@@ -1287,8 +1267,6 @@ private:
 class Exit : public Statement {
 public:
 	Exit () {}
-
-    ~Exit() override = default;
 
 	void sem_analysis() override {
 		Data_Type* func_return_type = return_type_vec[return_type_vec.size()-1].second;
@@ -1319,11 +1297,9 @@ private:
 class Return : public Statement {
 public:
 	Return (Expression* Expr) :  expr(Expr) {}
-
     ~Return() override {
         delete expr;  // free the owned Expression
     }
-
 	void sem_analysis() override {
 		expr->sem_analysis();
 
@@ -1360,11 +1336,9 @@ private:
 class Break : public Statement {
 public:
 	Break (Identifier* Id) : id(Id) {}
-
     ~Break() override {
         delete id;  // free the owned Identifier
     }
-
 	void sem_analysis() override {
 		char msg[1000];
 
@@ -1408,12 +1382,9 @@ private:
 class Continue : public Statement {
 public:
 	Continue (Identifier* Id) : id(Id) {}
-
-
     ~Continue() override {
         delete id; // free the owned Identifier
     }
-
 	void sem_analysis() override {
 		char msg[1000];
 
@@ -1457,12 +1428,10 @@ private:
 class Loop : public Statement {
 public:
 	Loop (Identifier* Id, Block* blk) : id(Id), block(blk) {}
-
     ~Loop() override {
         delete id;
         delete block;
     }
-
 	void sem_analysis() override {
 		char msg[1000];
 		
@@ -1518,12 +1487,10 @@ private:
 class If : public Statement {
 public:
 	If () : cond_list(), if_list() {}
-
     ~If() override {
         for (auto cond : cond_list) delete cond;
         for (auto blk : if_list) delete blk;
     }
-
 	void append (Expression* cond, Block* blk) { 
 		cond_list.push_back(cond);
 		if_list.push_back(blk);
@@ -1621,7 +1588,6 @@ class Proc_call : public Statement {
 public:
 	Proc_call (Identifier* Id, vector<Expression*>* Expr_list) :
 		id(Id), expr_list(Expr_list) {}
-
     ~Proc_call() override {
         if (expr_list != nullptr) {
             for (auto expr : *expr_list) delete expr;
@@ -1629,7 +1595,6 @@ public:
         }
         delete id;
     }
-
 	void sem_analysis() override {
 		FuncSTEntry* func_info = fst.lookup(id->get_name(),this->get_line_num());
 		char msg[1000];
@@ -1698,7 +1663,7 @@ public:
 		}
 
 		vector<pair<string,int>> extern_variables;
-		for (int i=Index+1; i>=0; i--) {
+		for (int i=Index; i>=0; i--) {
 			if (extern_vars[i].find(id->get_name()) != extern_vars[i].end()) {
 				extern_variables = extern_vars[i][id->get_name()];
 				break;
@@ -1756,15 +1721,13 @@ class Func_call : public Expression {
 public:
 	Func_call (Identifier* Id, vector<Expression*>* Expr_list) :
 		id(Id), expr_list(Expr_list) {}
-
-    ~Func_call() override {
+   ~Func_call() override {
         if (expr_list != nullptr) {
             for (auto expr : *expr_list) delete expr;
             delete expr_list;
         }
         delete id;
     }
-
 	void sem_analysis() override {
 		FuncSTEntry* func_info = fst.lookup(id->get_name(),this->get_line_num());
 		char msg[1000];
@@ -1807,75 +1770,71 @@ public:
 		var_type = VarSTEntry(*func_info->return_type,vector<int>{});
 	}
 
-    Value* igen() const override {
-        Function* calleeFunc = TheModule->getFunction(id->get_name());
-        vector<Value*> parameters;
-        Value* currentVal;
-        Argument* arg;
-        int Idx = 0;
+	Value* igen() const override {
+		Function* calleeFunc = TheModule->getFunction(id->get_name());
+		vector<Value*> parameters;
+		Value* currentVal;
+		Argument* arg;
+		int Idx=0;
 
-        // Generate parameter values
-        if (expr_list != nullptr) {
-            for (auto &expr : *expr_list) {
-                currentVal = expr->igen();
+		if (expr_list!=nullptr) {
+			for (auto & expr : *expr_list) {
+				currentVal = expr->igen();
+				
+				if (expr->is_lvalue()) {
+					arg = next(calleeFunc->arg_begin(), Idx);
+					if (param_metadata[arg]==1 && expr->get_arg_data()!=1) {
+						currentVal = Builder.CreateGEP(currentVal->getType()->getPointerElementType(),currentVal,{c32(0),c32(0)});
+					}
+					else if (param_metadata[arg]==2) {
+						currentVal = Builder.CreateLoad(currentVal->getType()->getPointerElementType(),currentVal);
+					}
+				}
 
-                if (expr->is_lvalue()) {
-                    arg = next(calleeFunc->arg_begin(), Idx);
-                    if (param_metadata[arg] == 1 && expr->get_arg_data() != 1) {
-                        currentVal = Builder.CreateGEP(
-                            currentVal->getType()->getPointerElementType(),
-                            currentVal,
-                            {c32(0), c32(0)}
-                        );
-                    } else if (param_metadata[arg] == 2) {
-                        currentVal = Builder.CreateLoad(
-                            currentVal->getType()->getPointerElementType(),
-                            currentVal
-                        );
-                    }
-                }
+				parameters.push_back(currentVal);
+				Idx++;
+			}
+		}
 
-                parameters.push_back(currentVal);
-                Idx++;
-            }
-        }
+		vector<pair<string,int>> extern_variables;
+		for (int i=Index; i>=0; i--) {
+			if (extern_vars[i].find(id->get_name()) != extern_vars[i].end()) {
+				extern_variables = extern_vars[i][id->get_name()];
+				break;
+			}
+		}
 
-        // Handle extern variables safely
-        vector<pair<string, int>> extern_variables;
-        for (int i = Index + 1; i >= 0; i--) {
-            if (i < static_cast<int>(extern_vars.size())) {
-                auto it = extern_vars[i].find(id->get_name());
-                if (it != extern_vars[i].end()) {
-                    extern_variables = it->second;
-                    break;
-                }
-            }
-        }
+		if (extern_variables.size()!=0) {
+			vector<Type*> extern_types;
+			vector<AllocaInst*> extern_vals;
+			int j;
 
-        if (!extern_variables.empty()) {
-            auto Env_Type = function_env_types[id->get_name()];
-            AllocaInst* env = Builder.CreateAlloca(Env_Type, nullptr, "env");
+			for (auto &elem : extern_variables) {
+				j = 0;
+				for (auto &var : func_decl_stack[elem.second]) {
+					if (var.first == elem.first) {
+						extern_types.push_back(PointerType::get(var.second, 0));
+						extern_vals.push_back(func_var_stack[elem.second][j].first);
+						break;
+					}
+					j++;
+				}
+			}
 
-            for (int i = 0; i < static_cast<int>(extern_variables.size()); i++) {
-                const auto& elem = extern_variables[i];
-                int j = 0;
-                for (auto &var : func_decl_stack[elem.second]) {
-                    if (var.first == elem.first) {
-                        Value* slot = Builder.CreateStructGEP(Env_Type, env, i);
-                        Builder.CreateStore(func_var_stack[elem.second][j].first, slot);
-                        break;
-                    }
-                    j++;
-                }
-            }
+			auto Env_Type = function_env_types[id->get_name()];
+			AllocaInst* env = Builder.CreateAlloca(Env_Type, nullptr, "env");
+		
+			for (int i=0; i<extern_variables.size(); i++) {
+				Value* slot = Builder.CreateStructGEP(Env_Type, env, i);
+				Builder.CreateStore(extern_vals[i], slot);
+			}
 
-            parameters.push_back(env);
-        }
+			parameters.push_back(env);
+		}
 
-        return Builder.CreateCall(calleeFunc, parameters, "calltmp");
-    }
+		return Builder.CreateCall(calleeFunc, parameters,"calltmp");
+	}
 
-	
 	void printAST (ostream &out) const override {
 		out << "Func_call(" << *id; 
 		if (expr_list!= nullptr) {
@@ -1895,12 +1854,10 @@ class Operation : public Expression {
 public:
 	Operation (Expression* Expr1, string operand, Expression* Expr2) : 
 		expr1(Expr1), op(operand), expr2(Expr2) {}
-	
     ~Operation() override {
         delete expr1;
         if (expr2) delete expr2;
-    }
-
+    }	
 	void err_message(Data_Type type1, Data_Type type2, int msg_type) {
 		char msg[1000];
 
