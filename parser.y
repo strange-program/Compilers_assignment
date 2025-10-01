@@ -289,10 +289,18 @@ void yyerror(const char *msg, int err_line) {
 
 
 int main(int argc, char *argv[]) {
-    optimize = false;
-    if (argc >= 2) {
-        optimize = atoi(argv[1]);
+    bool optimize = false;
+    std::string filename;
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "-O") {
+            optimize = true;
+        } else {
+            filename = arg; // assume anything else is the input file
+        }
     }
+
     int res = yyparse();
 
     if (res == 0) {
