@@ -164,6 +164,7 @@ inline ostream &operator << (ostream &out, const AST &ast) {
 
 class Declaration : public AST {
 public:
+	virtual Value* declgen() { return nullptr; }
 };
 
 class Statement : public AST {
@@ -619,18 +620,22 @@ public:
 		}
 	}
 
+	void decl_params() {
+		Type* par_Type = param_type->get_Type();
+
+		// Parameters passed by value need to be also allocated
+		// This way they are mutable (can be altered)
+		if (par_Type->isIntegerTy(32) || par_Type->isIntegerTy(8)) {
+			for (auto &id : *id_list) func_decl_stack.back().push_back(make_pair(id->get_name(),par_Type));
+		}		
+	}
+
 	vector<pair<string,Type*>> get_Params() {
 		vector<pair<string,Type*>> parameters;
 		Type* par_Type = param_type->get_Type();
 		
 		for (auto &id : *id_list) {
 			parameters.push_back(make_pair(id->get_name(),par_Type));
-		}
-
-		// Parameters passed by value need to be also allocated
-		// This way they are mutable (can be altered)
-		if (par_Type->isIntegerTy(32) || par_Type->isIntegerTy(8)) {
-			for (auto &id : *id_list) func_decl_stack.back().push_back(make_pair(id->get_name(),par_Type));
 		}
 
 		// Store info that array is dynamic
@@ -708,7 +713,7 @@ public:
 
 	}
 
-	Value* igen() const override {
+	Value* declgen() override { 
 		vector<string> Parameter_Names;
 		vector<Type*> Parameter_Types;
 		vector<pair<string,Type*>> temp_params;
@@ -774,6 +779,15 @@ public:
 		return nullptr;
 	}
 
+	void decl_params() {
+		// Get parameter types and names
+		if (param_list != nullptr) {
+			for (auto &param : *param_list) {
+				param->decl_params();
+			}
+		}
+	}
+
 	string get_func_name() { return id->get_name(); }
 
 	void printAST (ostream &out) const override{
@@ -814,6 +828,11 @@ public:
 
 	void sem_analysis() override {
 		for (auto &decl : decl_list) decl->sem_analysis();
+	}
+
+	Value* declgen() override {
+		for (auto &decl : decl_list) decl->declgen();
+		return nullptr;
 	}
 
 	Value* igen() const override {
@@ -868,8 +887,8 @@ public:
 		}
 		for (auto &id : *var_list) vst.insertVar(id->get_name(),*data_type,dims);
 	}
-
-	Value* igen() const override {
+ 
+	Value* declgen() override {
 		vector<int> dims;
 		Type* base_type;
 		Type *Ty;
@@ -1002,6 +1021,11 @@ public:
 
 	}
 
+	Value* declgen() override {
+		header->declgen();
+		return nullptr;
+	}
+
 	Value* igen() const override {
 		AllocaInst *Alloca;
 		Argument* Arg;
@@ -1011,8 +1035,11 @@ public:
 		Index++;
 
 		// First define all inner functions, then this one
-		declaration_list->igen();
-		header->igen();
+		//declaration_list->igen();
+		//header->igen();
+		declaration_list->declgen();
+		header->decl_params();
+		//header->igen();
 
 		// Create basic block
 		Function *TheFunction = TheModule->getFunction(header->get_func_name());
@@ -1038,6 +1065,8 @@ public:
 			else if (retType->isIntegerTy(8)) Builder.CreateRet(c8(0)); 
 			else Builder.CreateRetVoid();
 		}
+
+		declaration_list->igen();
 
 		func_decl_stack.pop_back();
 		func_var_stack.pop_back();
@@ -1184,7 +1213,7 @@ public:
 		Index = 0;
 
 		// First define all inner functions, then this one
-		declaration_list->igen();
+		declaration_list->declgen();
 
 		// Create basic block
 		FunctionType *main_type = FunctionType::get(Type::getVoidTy(TheContext), {}, false);
@@ -1201,6 +1230,8 @@ public:
 		// Generate code for block
 		function_block->igen();
 		Builder.CreateRetVoid();
+
+		declaration_list->igen();
 
 		func_decl_stack.pop_back();
 		func_var_stack.pop_back();
