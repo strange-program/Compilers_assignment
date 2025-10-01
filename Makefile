@@ -7,7 +7,7 @@ CFLAGS2  = $(shell $(LLVM_CONFIG) --cxxflags) -std=c++17
 BFLAGS   = -Wcounterexamples
 LDFLAGS  = $(shell $(LLVM_CONFIG) --ldflags --libs core) -lfl
 
-# Targets
+# Default target
 all: danac
 
 lexer.cpp: lexer.l parser.hpp
@@ -22,15 +22,17 @@ parser.hpp parser.cpp: parser.y
 parser.o: parser.cpp lexer.hpp ast.hpp symbol.hpp
 	$(CC) $(CFLAGS2) -c parser.cpp
 
+# Library build
+lib.a: lib.cpp
+	$(CC) -Wall -g -fPIC -c lib.cpp -o lib.o
+	ar rcs lib.a lib.o
+
+# Main binary depends on everything
 danac: lexer.o parser.o lib.a
 	$(CC) $(CFLAGS) -o danac $^ $(LDFLAGS)
-
-library: lib.cpp
-	g++ -Wall -g -fPIC -c lib.cpp -o lib.o
-	ar rcs lib.a lib.o
 
 clean:
 	$(RM) lexer.cpp parser.cpp parser.hpp parser.output *.o
 
 distclean: clean
-	$(RM) danac
+	$(RM) danac lib.a
