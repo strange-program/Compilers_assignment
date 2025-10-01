@@ -5,13 +5,13 @@
 
 #include "lexer.hpp"
 #include "ast.hpp"
-#include "symbol.hpp"
+
 using namespace std;
 
 extern int lineno;
 bool optimize;
 
-Func_Def* root = nullptr; // store top-level function definition
+Func_Def* root = nullptr;
 
 // Semantic analysis data structures
 Var_Symbol_Table vst;
@@ -53,7 +53,7 @@ vector<pair<string,pair<BasicBlock*,BasicBlock*>>> loop_block_stack;
 int loop_block_id = 0;
 vector<map<string,vector<pair<string,int>>>> extern_vars;
 vector<string> func_name_stack;
-int Index = -1;
+int Index = 0;
 map<string, StructType*> function_env_types;
 
 %}
@@ -132,6 +132,10 @@ map<string, StructType*> function_env_types;
 	int int_const;
 	char char_const;
 }
+
+//%destructor {
+//    delete $$;
+//} <expression_list>
 
 %type<data_type> data_type
 
