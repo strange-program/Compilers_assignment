@@ -80,7 +80,8 @@ public:
         int ret = scope_stack.size()-1;
         for (auto s = scope_stack.rbegin(); s != scope_stack.rend(); s++) {
             VarSTEntry* e = s->lookup(name);
-            if (e != nullptr && ret!=scope_stack.size()-1) return ret;
+            if (e != nullptr && ret==scope_stack.size()-1) return -1;
+            else if (e != nullptr) return ret;
             ret--;
         }
 
