@@ -181,6 +181,8 @@ private:
     vector<Func_Scope> scope_stack;
 };
 
+
+
 inline Data_Type type_b = type_byte;
 inline Data_Type type_i = type_integer;
 
@@ -296,7 +298,6 @@ extern vector<pair<string,FuncSTEntry>> declared_functions;
 // Vector used for checking that a return command returns the 
 // appropriate type of a function
 extern vector<pair<string,Data_Type*>> return_type_vec;
-
 
 // ====================================================
 //            Loop naming semantic analysis 
