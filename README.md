@@ -102,13 +102,45 @@ It allows you to compile Dana source files, generate intermediate representation
 |-f|Read the program from stdin and generate final assembly code to stdout.|
 |-i|Read the program from stdin and generate intermediate representation (IR) to stdout.|
 ---
-# Byte operators 
+# Boolean operations with byte variables
+Based on the dana documentation we assumed that if f : with f being of type byte is not valid dana syntax, the correct version would look like this if f = true :
+
+For this reason we have changed some dana files to correct this inconsistency, please use the programs in here and not on the original directory
 
 # Problems with our implementation
 - Functions can pass variables one level down and no more
 - Same name - different argument functions have not been implemented
 - Error line (lineno) is not always accurate, it might show the liune of the next instruction instead of the intended one
-# Working examples
-
-# Not working examples
-
+# Working examples (26 / 31)
+- programs-kostis/IntXor.dana
+- programs-kostis/binarysearch.dana
+- programs-kostis/bsort.dana
+- programs-kostis/dot_product.dana
+- programs-kostis/evenChecker.dana
+- programs-kostis/factorial.dana
+- programs-kostis/factors.dana
+- programs-kostis/fibonacci.dana
+- programs-kostis/gcd.dana
+- programs-kostis/hanoi.dana
+- programs-kostis/hello.dana
+- programs-kostis/knapsack.dana
+- programs-kostis/linemarket.dana
+- programs-kostis/lis.dana
+- programs-kostis/matrix_mul.dana
+- programs-kostis/mergesort.dana
+- programs-kostis/nextRand.dana
+- programs-kostis/palindrome.dana
+- programs-kostis/powint.dana
+- programs-kostis/primeFactors.dana
+- programs-kostis/quicksort.dana
+- programs-kostis/reverseNumber.dana
+- programs-kostis/rotatefun.dana
+- programs-kostis/strrev.dana
+- programs-kostis/sudoku.dana
+- programs-kostis/sumOfDigits.dana
+# Not working examples (5 / 31)
+- programs-kostis/tsp.dana ---> Instruction does not dominate all uses!
+- programs-kostis/perceptron.dana ---> Instruction does not dominate all uses!
+- programs-kostis/def_scopes.dana ---> Instruction does not dominate all uses!
+- programs-kostis/calculator.dana ---> Terminator found in the middle of a basic block!
+- programs-kostis/N_Queens.dana ---> line 73:  1087 Segmentation fault (core dumped)
