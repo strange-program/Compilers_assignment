@@ -1,6 +1,0 @@
-# Lexical error: var starting with number
-
-def test 
-	begin
-		3x = 'a'
-	end

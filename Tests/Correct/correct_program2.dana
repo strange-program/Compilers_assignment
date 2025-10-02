@@ -1,7 +1,0 @@
-# Program defines the factorial function but doesnt use it
-# It is correct, but don't expect any output
-
-def fact is int: n as int
-	if n <= 1: return: 0
-	else: return: n * fact(n-1)
- 

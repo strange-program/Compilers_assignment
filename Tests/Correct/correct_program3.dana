@@ -1,7 +1,0 @@
-# Warning: unreachable code
-
-def fact is int: n as int
-	if n <= 1: return: 0
-		if n = 2: return: 2
-	return: 1
-	if n = 0: return: n * fact(n-1)
