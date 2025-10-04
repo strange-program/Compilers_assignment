@@ -109,7 +109,7 @@ It allows you to compile Dana source files, generate intermediate representation
 - Functions can pass variables one level down and no more
 - Same name - different argument functions have not been implemented
 - Error line (lineno) is not always accurate, it might show the liune of the next instruction instead of the intended one
-# Working examples (27 / 31)
+# Working examples (28 / 31)
 - programs-kostis/IntXor.dana
 - programs-kostis/binarysearch.dana
 - programs-kostis/bsort.dana
@@ -138,7 +138,7 @@ It allows you to compile Dana source files, generate intermediate representation
 - programs-kostis/sumOfDigits.dana
 - programs-kostis/N_Queens.dana
 - programs-kostis/calculator.dana
-# Not working examples (4 / 31)
+# Not working examples (3 / 31)
 - programs-kostis/tsp.dana ---> Instruction does not dominate all uses!
 - programs-kostis/perceptron.dana ---> Instruction does not dominate all uses!
 - programs-kostis/def_scopes.dana ---> Instruction does not dominate all uses!
