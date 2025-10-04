@@ -1,4 +1,0 @@
-# Error: missing ':' in function call syntax
-
-def main
-    writeString "Hello without a colon"
