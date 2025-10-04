@@ -136,10 +136,10 @@ It allows you to compile Dana source files, generate intermediate representation
 - programs-kostis/strrev.dana
 - programs-kostis/sudoku.dana
 - programs-kostis/sumOfDigits.dana
-- programs-kostis/N_Queens.dana 
+- programs-kostis/N_Queens.dana
+- programs-kostis/calculator.dana
 # Not working examples (4 / 31)
 - programs-kostis/tsp.dana ---> Instruction does not dominate all uses!
 - programs-kostis/perceptron.dana ---> Instruction does not dominate all uses!
 - programs-kostis/def_scopes.dana ---> Instruction does not dominate all uses!
-- programs-kostis/calculator.dana ---> Terminator found in the middle of a basic block!
 
