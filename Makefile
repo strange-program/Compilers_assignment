@@ -5,7 +5,7 @@ LLVM_CONFIG = llvm-config
 CFLAGS   = -Wall $(shell $(LLVM_CONFIG) --cxxflags) -std=c++17
 CFLAGS2  = $(shell $(LLVM_CONFIG) --cxxflags) -std=c++17
 BFLAGS   = -Wcounterexamples
-LDFLAGS  = $(shell $(LLVM_CONFIG) --ldflags --libs core) -lfl
+LDFLAGS  = $(shell $(LLVM_CONFIG) --ldflags --libs core scalaropts transformutils analysis support) -lfl
 
 # Default target
 all: danac
