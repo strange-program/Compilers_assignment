@@ -1229,7 +1229,8 @@ public:
 
 		// Generate code for block
 		function_block->igen();
-		Builder.CreateRetVoid();
+		BasicBlock *PrevBB = Builder.GetInsertBlock();
+		if (!PrevBB->getTerminator()) Builder.CreateRetVoid(); 
 
 		declaration_list->igen();
 
