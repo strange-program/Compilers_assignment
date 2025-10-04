@@ -938,7 +938,7 @@ public:
 		}
 		stmt_list.clear();
 	}
-	void append (Statement* stmt) { stmt_list.push_back(stmt); }
+	void append (Statement* stmt) { if (stmt!=nullptr) stmt_list.push_back(stmt); }
 
 	void sem_analysis() override {
 		for (auto &stmt : stmt_list) stmt->sem_analysis();

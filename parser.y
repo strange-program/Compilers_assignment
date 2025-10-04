@@ -205,7 +205,7 @@ func_decl : "decl" header   { $2->set_to_decl(); $$ = $2; } ;
 
 var_def : "var" id_list "is" data_type int_const_list { $$ = new Variable_decl($2,$5,$4); $$->set_line(lineno); } ;
 
-stmt : "skip"                                    { /*nothing */ }
+stmt : "skip"                                    { /*nothing */ $$ = nullptr; }
 | lvalue ":=" expr                               { $$ = new Assignment($1,$3); $$->set_line(lineno); }
 | proc_call                                      { $$ = $1; }
 | "exit"                                         { $$ = new Exit(); $$->set_line(lineno); }
@@ -305,6 +305,7 @@ int main(int argc, char *argv[]) {
 
     if (res == 0) {
         if (root) {
+			//cout << root;
             root->sem_analysis();
             root->LLVM_IR_gen(optimize);
             delete root;
