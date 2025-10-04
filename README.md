@@ -102,10 +102,6 @@ It allows you to compile Dana source files, generate intermediate representation
 |-f|Read the program from stdin and generate final assembly code to stdout.|
 |-i|Read the program from stdin and generate intermediate representation (IR) to stdout.|
 ---
-# Boolean operations with byte variables
-Based on the dana documentation we assumed that if f : with f being of type byte is not valid dana syntax, the correct version would look like this if f = true :
-
-For this reason we have changed some dana files to correct this inconsistency, please use the programs in here and not on the original directory
 
 # Problems with our implementation
 - Functions can pass variables one level down and no more
