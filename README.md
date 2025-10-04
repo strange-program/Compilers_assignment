@@ -93,6 +93,8 @@ It allows you to compile Dana source files, generate intermediate representation
 
 ./danac.sh [options] <source_file>
 
+(May need to use chmod +x danac.sh to make the script executable)
+
 ## Arguments
 
 |Flag|Description|
