@@ -26,11 +26,14 @@ extern "C" int readInteger() {
 }
 
 extern "C" void readString(int n, char* str) {
-    for (int i=0; i<n; i++) {
-        scanf("%c",&str[i]);
+    char c;
+    int i;
+    for (i=0; i<n-1; i++) {
+        scanf("%c",&c);
+        if (c!='\n') str[i] = c;
+        else break;
     }
-    str[n]='\0';
-    while (getchar()!='\n');
+    str[i]='\0';
 }
 
 extern "C" char readChar() {
