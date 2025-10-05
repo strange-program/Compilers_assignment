@@ -107,6 +107,7 @@ It allows you to compile Dana source files, generate intermediate representation
 
 # Problems with our implementation
 - Functions can pass variables one level down and no more
+- each input should be in a different line
 - Same name - different argument functions have not been implemented
 - Error line (lineno) is not always accurate, it might show the liune of the next instruction instead of the intended one
 # Working examples (28 / 31)
