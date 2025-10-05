@@ -1,7 +1,7 @@
 # Compilers_assignment
 Assignment for the Compilers lesson of the 8th Semester of ece ntua. The code contains the compiler for the programming language Dana.
 
-Εμανουήλ Ρεΐζης (03121067) 
+Εμμανουήλ Ρεΐζης (03121067) 
 
 Δημήτριος Δημητρακόπουλος (03121066)
 
