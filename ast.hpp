@@ -61,18 +61,6 @@ inline void debugValue(const char* location, Value* v) {
                  << ", IsPointer: " << v->getType()->isPointerTy() << "\n";
 }
 
-// TODO
-
-// semantic analysis that checks that the lhs of an assignment is not an array
-// Revisit semantic analysis on functions that are declared but not defined
-// Add semantic analysis for code that doesn't have break inside loops or return inside functions
-// Semantic analysis for parameters passed by reference
-// See code generation for functions that alter variables of outer functions
-// Definition of functions with same name
-// == operator for varstentry might be errogenous
-// lineno in semantic errors is sometimes misplaced
-// check byte values for operators !,&,|
-
 class AST {
 public:
     virtual ~AST() = default;
