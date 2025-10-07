@@ -65,7 +65,7 @@ else
     exit 1
   fi
 
-  if ! clang -o "$outfile" "$as_file" lib.a; then
+  if ! clang -no-pie -o "$outfile" "$as_file" lib.a; then
     exit 1
   fi
 
