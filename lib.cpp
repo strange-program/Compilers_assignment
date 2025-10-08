@@ -21,7 +21,7 @@ extern "C" void writeByte(char c) {
 extern "C" int readInteger() {
     int x;
     scanf("%d",&x);
-    while (getchar()!='\n');
+    //while (getchar()!='\n');
     return x;
 }
 
