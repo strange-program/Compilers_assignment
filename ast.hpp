@@ -1204,7 +1204,7 @@ public:
 		declaration_list->declgen();
 
 		// Create basic block
-		FunctionType *main_type = FunctionType::get(Type::getVoidTy(TheContext), {}, false);
+        FunctionType *main_type = FunctionType::get(i32, {}, false);
     	Function *main = Function::Create(main_type, Function::ExternalLinkage,"main", TheModule.get());
 		BasicBlock *BB = BasicBlock::Create(TheContext, "entry", main);
 		Builder.SetInsertPoint(BB);
@@ -1218,7 +1218,7 @@ public:
 		// Generate code for block
 		function_block->igen();
 		BasicBlock *PrevBB = Builder.GetInsertBlock();
-		if (!PrevBB->getTerminator()) Builder.CreateRetVoid(); 
+		if (!PrevBB->getTerminator()) Builder.CreateRet(c32(0));
 
 		declaration_list->igen();
 
@@ -1286,30 +1286,43 @@ private:
 // Class for exit command
 class Exit : public Statement {
 public:
-	Exit () {}
+    Exit() {}
 
-	void sem_analysis() override {
-		Data_Type* func_return_type = return_type_vec[return_type_vec.size()-1].second;
-		string func_name = return_type_vec[return_type_vec.size()-1].first;
-		char msg[1000];
+    void sem_analysis() override {
+        Data_Type* func_return_type = return_type_vec.back().second;
+        string func_name = return_type_vec.back().first;
+        char msg[1000];
 
-		if (func_return_type != nullptr) {
-			snprintf(msg,sizeof(msg),"In function %s: cannot use exit command on function that returns %s",func_name.c_str(),
-				data_name[*func_return_type]);
-			yyerror(msg, this->get_line_num());
-		}
-	}
+        if (func_return_type != nullptr) {
+            snprintf(msg, sizeof(msg),
+                "In function %s: cannot use exit command on function that returns %s",
+                func_name.c_str(), data_name[*func_return_type]);
+            yyerror(msg, this->get_line_num());
+        }
+    }
 
-	Value* igen() const override {
-		return Builder.CreateRetVoid();
-	}
+    Value* igen() const override {
+        // Ensure the exit() function is declared in the module
+        Function *exitFunc = TheModule->getFunction("exit");
+        if (!exitFunc) {
+            FunctionType *exitType = FunctionType::get(Type::getVoidTy(TheContext),
+                                                      {Type::getInt32Ty(TheContext)}, false);
+            exitFunc = Function::Create(exitType, Function::ExternalLinkage,
+                                        "exit", TheModule.get());
+        }
 
-	void printAST (ostream &out) const override {
-		out << "Exit";
-	}
+        // Emit: call void @exit(i32 0)
+        Builder.CreateCall(exitFunc, {c32(0)});
 
-private:
+        // Emit unreachable to mark that control flow never returns from exit()
+        Builder.CreateUnreachable();
 
+        return nullptr;
+    }
+
+    void printAST(std::ostream &out) const override {
+        out << "Exit";
+    }
 };
 
 
