@@ -1948,10 +1948,12 @@ public:
 		}
 		else if (op == "not") {
 			if (type1 == type_bool) var_type = VarSTEntry(type_bool,{});
+			else if (type1 == type_byte) var_type = VarSTEntry(type_byte,{});
 			else err_message(type1,type_bool,2);
 		}
 		else {  // Case for operations and,or
 			if (type1 == type_bool && type2 == type_bool) var_type = VarSTEntry(type_bool,{});
+			else if (type1 == type_byte && type2 == type_byte) var_type = VarSTEntry(type_byte,{});
 			else err_message(type1,type2,1);
 		}
 	}
@@ -1995,7 +1997,7 @@ public:
 			if (val1->getType() == Type::getInt32Ty(TheContext)) return Builder.CreateICmpSLE(val1,val2,"is_less_or_eq");
 			else return Builder.CreateICmpULE(val1,val2,"is_less_or_eq");
 		}
-		else if (op == "!") { 
+		else if (op == "!") {
 			Value* is_zero = Builder.CreateICmpEQ(val1,c8(0));
 			return Builder.CreateSelect(is_zero,c8(1),c8(0),"boolnottmp");
 		}
