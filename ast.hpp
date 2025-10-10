@@ -61,18 +61,6 @@ inline void debugValue(const char* location, Value* v) {
                  << ", IsPointer: " << v->getType()->isPointerTy() << "\n";
 }
 
-// TODO
-
-// semantic analysis that checks that the lhs of an assignment is not an array
-// Revisit semantic analysis on functions that are declared but not defined
-// Add semantic analysis for code that doesn't have break inside loops or return inside functions
-// Semantic analysis for parameters passed by reference
-// See code generation for functions that alter variables of outer functions
-// Definition of functions with same name
-// == operator for varstentry might be errogenous
-// lineno in semantic errors is sometimes misplaced
-// check byte values for operators !,&,|
-
 class AST {
 public:
     virtual ~AST() = default;
@@ -1216,7 +1204,7 @@ public:
 		declaration_list->declgen();
 
 		// Create basic block
-		FunctionType *main_type = FunctionType::get(Type::getVoidTy(TheContext), {}, false);
+        FunctionType *main_type = FunctionType::get(i32, {}, false);
     	Function *main = Function::Create(main_type, Function::ExternalLinkage,"main", TheModule.get());
 		BasicBlock *BB = BasicBlock::Create(TheContext, "entry", main);
 		Builder.SetInsertPoint(BB);
@@ -1230,7 +1218,7 @@ public:
 		// Generate code for block
 		function_block->igen();
 		BasicBlock *PrevBB = Builder.GetInsertBlock();
-		if (!PrevBB->getTerminator()) Builder.CreateRetVoid(); 
+		if (!PrevBB->getTerminator()) Builder.CreateRet(c32(0));
 
 		declaration_list->igen();
 
@@ -1298,30 +1286,43 @@ private:
 // Class for exit command
 class Exit : public Statement {
 public:
-	Exit () {}
+    Exit() {}
 
-	void sem_analysis() override {
-		Data_Type* func_return_type = return_type_vec[return_type_vec.size()-1].second;
-		string func_name = return_type_vec[return_type_vec.size()-1].first;
-		char msg[1000];
+    void sem_analysis() override {
+        Data_Type* func_return_type = return_type_vec.back().second;
+        string func_name = return_type_vec.back().first;
+        char msg[1000];
 
-		if (func_return_type != nullptr) {
-			snprintf(msg,sizeof(msg),"In function %s: cannot use exit command on function that returns %s",func_name.c_str(),
-				data_name[*func_return_type]);
-			yyerror(msg, this->get_line_num());
-		}
-	}
+        if (func_return_type != nullptr) {
+            snprintf(msg, sizeof(msg),
+                "In function %s: cannot use exit command on function that returns %s",
+                func_name.c_str(), data_name[*func_return_type]);
+            yyerror(msg, this->get_line_num());
+        }
+    }
 
-	Value* igen() const override {
-		return Builder.CreateRetVoid();
-	}
+    Value* igen() const override {
+        // Ensure the exit() function is declared in the module
+        Function *exitFunc = TheModule->getFunction("exit");
+        if (!exitFunc) {
+            FunctionType *exitType = FunctionType::get(Type::getVoidTy(TheContext),
+                                                      {Type::getInt32Ty(TheContext)}, false);
+            exitFunc = Function::Create(exitType, Function::ExternalLinkage,
+                                        "exit", TheModule.get());
+        }
 
-	void printAST (ostream &out) const override {
-		out << "Exit";
-	}
+        // Emit: call void @exit(i32 0)
+        Builder.CreateCall(exitFunc, {c32(0)});
 
-private:
+        // Emit unreachable to mark that control flow never returns from exit()
+        Builder.CreateUnreachable();
 
+        return nullptr;
+    }
+
+    void printAST(std::ostream &out) const override {
+        out << "Exit";
+    }
 };
 
 
@@ -1572,17 +1573,15 @@ public:
 		Value* cond;
 		for (int i=0; i<cond_list.size()-1; i++) {
 			cond = cond_list[i]->igen();
-			
-			Value* cond2 = Builder.CreateICmpNE(cond, ConstantInt::get(cond->getType(), 0));
-
-			Builder.CreateCondBr(cond2,bodyBB_list[i],condBB_list[i+1]);
+			cond = Builder.CreateICmpNE(cond, ConstantInt::get(cond->getType(), 0));
+			Builder.CreateCondBr(cond,bodyBB_list[i],condBB_list[i+1]);
 			Builder.SetInsertPoint(condBB_list[i+1]);
 		}
 
 		if (cond_list.back()!=nullptr) {
 			cond = cond_list.back()->igen();
-			Value* cond2 = Builder.CreateICmpNE(cond, ConstantInt::get(cond->getType(), 0));
-			Builder.CreateCondBr(cond2,bodyBB_list.back(),current_BB);
+			cond = Builder.CreateICmpNE(cond, ConstantInt::get(cond->getType(), 0));
+			Builder.CreateCondBr(cond,bodyBB_list.back(),current_BB);
 		}
 		else {
 			Builder.CreateBr(bodyBB_list.back());
